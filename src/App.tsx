@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import LoginPage from "./pages/LoginPage";
 import ResidentsPage from "./pages/ResidentsPage";
+import SchedulePage from "./pages/SchedulePage";
+import WhosOnPage from "./pages/WhosOnPage";
 import type { AppPage } from "./types/page";
 
 function PlaceholderPage({ title }: { title: string }) {
@@ -13,7 +15,7 @@ function PlaceholderPage({ title }: { title: string }) {
       <Typography variant="h4" fontWeight={800}>
         {title}
       </Typography>
-      <Typography color="text.secondary">
+      <Typography color="text.secondary" sx={{ mt: 1 }}>
         This section will be built next.
       </Typography>
     </Box>
@@ -22,7 +24,7 @@ function PlaceholderPage({ title }: { title: string }) {
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState<AppPage>("residents");
+  const [currentPage, setCurrentPage] = useState<AppPage>("whos-on");
 
   if (loading) {
     return (
@@ -44,9 +46,10 @@ function AppContent() {
   }
 
   const pageContent = {
-    dashboard: <PlaceholderPage title="Dashboard" />,
+    "whos-on": <WhosOnPage />,
     residents: <ResidentsPage />,
-    schedule: <PlaceholderPage title="Schedule Builder" />,
+    schedule: <SchedulePage />,
+    "block-schedule": <PlaceholderPage title="Block Schedule" />,
     "call-swaps": <PlaceholderPage title="Call Swaps" />,
     vacation: <PlaceholderPage title="Vacation Requests" />,
     settings: <PlaceholderPage title="Settings" />,
