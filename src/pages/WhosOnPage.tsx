@@ -29,6 +29,11 @@ import {
   getAutoNightFloatCell,
   isNightFloatService,
 } from "../utils/nightFloatSchedule";
+import {
+  detectDailyScheduleIssues,
+  issueSeverityStyle,
+  type ScheduleIssue,
+} from "../utils/schedulingIntelligence";
 
 type WhosOnMode = "call" | "all" | "admitting" | "consulting";
 
@@ -203,6 +208,29 @@ export default function WhosOnPage() {
 
   const monthlyAssignments = schedule?.assignments || {};
 
+  const residentCallServices = useMemo(
+    () => residentCallRows.map(makeScheduleServiceFromRow),
+    []
+  );
+
+  const todayIssues = useMemo(() => {
+    return detectDailyScheduleIssues({
+      date: selectedDateKey,
+      services: residentCallServices,
+      monthlyAssignments,
+      blocks,
+      blockAssignments,
+      residents,
+    });
+  }, [
+    blockAssignments,
+    blocks,
+    monthlyAssignments,
+    residentCallServices,
+    residents,
+    selectedDateKey,
+  ]);
+
   const callRows = useMemo(() => {
     return residentCallRows
       .sort((a, b) => a.order - b.order)
@@ -224,12 +252,15 @@ export default function WhosOnPage() {
         const cell = manualCell || autoCell;
         const resident = cell?.residentId ? residentsById[cell.residentId] : undefined;
 
+        const rowIssues = todayIssues.filter((issue) => issue.serviceId === service.id);
+
         return {
           service: row.name,
           time: row.time,
           name: cell?.residentName || "",
           level: cell?.training || row.level,
           pager: cell?.pager || resident?.pager || "",
+          issues: rowIssues,
         };
       });
   }, [
@@ -239,6 +270,7 @@ export default function WhosOnPage() {
     residents,
     residentsById,
     selectedDateKey,
+    todayIssues,
   ]);
 
   const assignedCallCount = callRows.filter((row) => row.name).length;
@@ -409,6 +441,8 @@ export default function WhosOnPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {!loading && <TodayIssuesPanel issues={todayIssues} />}
+
       {mode === "call" && !loading && (
         <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
           Reading monthly schedule <b>{monthId}</b>. Assigned resident call rows found for this date: <b>{assignedCallCount}</b>.
@@ -457,10 +491,115 @@ export default function WhosOnPage() {
   );
 }
 
+function TodayIssuesPanel({ issues }: { issues: ScheduleIssue[] }) {
+  const critical = issues.filter((issue) => issue.severity === "critical");
+  const warnings = issues.filter((issue) => issue.severity === "warning");
+  const info = issues.filter((issue) => issue.severity === "info");
+
+  if (issues.length === 0) {
+    return (
+      <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+        No resident call conflicts detected for this date.
+      </Alert>
+    );
+  }
+
+  return (
+    <Card sx={{ mb: 2, borderRadius: 3 }}>
+      <CardContent sx={{ p: 1.5 }}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1}
+          justifyContent="space-between"
+          sx={{ mb: 1 }}
+        >
+          <Box>
+            <Typography fontWeight={900}>Today&apos;s Issues</Typography>
+            <Typography color="text.secondary" fontSize={12.5}>
+              These are warnings only. They do not block the schedule.
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            <IssueCountChip label="Critical" count={critical.length} severity="critical" />
+            <IssueCountChip label="Warning" count={warnings.length} severity="warning" />
+            <IssueCountChip label="Info" count={info.length} severity="info" />
+          </Stack>
+        </Stack>
+
+        <Stack spacing={0.6}>
+          {issues.slice(0, 5).map((issue) => {
+            const style = issueSeverityStyle(issue.severity);
+
+            return (
+              <Box
+                key={issue.id}
+                sx={{
+                  p: 0.75,
+                  borderRadius: 2,
+                  backgroundColor: style.bg,
+                  border: "1px solid",
+                  borderColor: style.border,
+                }}
+              >
+                <Typography fontSize={12.5} fontWeight={900} sx={{ color: style.color }}>
+                  {issue.title}
+                </Typography>
+                <Typography fontSize={12} color="text.secondary">
+                  {issue.message}
+                </Typography>
+              </Box>
+            );
+          })}
+
+          {issues.length > 5 && (
+            <Typography fontSize={12} color="text.secondary">
+              + {issues.length - 5} more issue{issues.length - 5 === 1 ? "" : "s"}.
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function IssueCountChip({
+  label,
+  count,
+  severity,
+}: {
+  label: string;
+  count: number;
+  severity: "critical" | "warning" | "info";
+}) {
+  const style = issueSeverityStyle(severity);
+
+  return (
+    <Chip
+      label={`${label}: ${count}`}
+      size="small"
+      sx={{
+        fontWeight: 900,
+        color: style.color,
+        backgroundColor: style.bg,
+        border: "1px solid",
+        borderColor: style.border,
+      }}
+    />
+  );
+}
+
 function ResidentCallsTable({
   rows,
 }: {
-  rows: { service: string; time: string; name: string; level: string; pager: string }[];
+  rows: {
+    service: string;
+    time: string;
+    name: string;
+    level: string;
+    pager: string;
+    issues: ScheduleIssue[];
+  }[];
 }) {
   return (
     <TableShell columns="minmax(170px, 1.1fr) 110px minmax(180px, 1.4fr) 110px 110px">
@@ -476,7 +615,7 @@ function ResidentCallsTable({
         <DataRow key={`${row.service}-${index}`} columns="minmax(170px, 1.1fr) 110px minmax(180px, 1.4fr) 110px 110px" index={index}>
           <ServiceCell label={row.service} />
           <TimeBadge time={row.time} />
-          <NameCell name={row.name} />
+          <NameCell name={row.name} issues={row.issues} />
           <LevelBadge level={row.level} />
           <PagerCell pager={row.pager} />
         </DataRow>
@@ -501,7 +640,7 @@ function AllServicesTable({
       {rows.map((row, index) => (
         <DataRow key={`${row.service}-${row.name}-${index}`} columns="minmax(190px, 1fr) minmax(220px, 1.3fr) 110px" index={index}>
           <ServiceCell label={row.service} />
-          <NameCell name={row.name} />
+          <NameCell name={row.name} issues={[]} />
           <LevelBadge level={row.level} />
         </DataRow>
       ))}
@@ -530,7 +669,7 @@ function AttendingServicesTable({
       {rows.map((row, index) => (
         <DataRow key={`${row.specialty}-${index}`} columns="minmax(220px, 1.3fr) minmax(180px, 1.1fr) 130px minmax(160px, 1fr)" index={index}>
           <ServiceCell label={row.specialty} />
-          <NameCell name={row.consultant} />
+          <NameCell name={row.consultant} issues={[]} />
           <Chip label={row.coverage} size="small" sx={{ width: "fit-content", fontWeight: 800, ...coverageBadgeColor(row.coverage) }} />
           <Typography fontSize={13} fontWeight={700} sx={{ color: row.phone === "—" ? "text.secondary" : "#2563eb" }}>
             ☎ {row.phone}
@@ -597,11 +736,44 @@ function ServiceCell({ label }: { label: string }) {
   );
 }
 
-function NameCell({ name }: { name: string }) {
+function NameCell({ name, issues }: { name: string; issues: ScheduleIssue[] }) {
+  const hasCritical = issues.some((issue) => issue.severity === "critical");
+  const hasWarning = issues.some((issue) => issue.severity === "warning");
+
   return (
-    <Typography fontSize={13.5} fontWeight={name && name !== "—" ? 650 : 500} fontStyle={name && name !== "—" ? "normal" : "italic"} color={name && name !== "—" ? "text.primary" : "text.secondary"} sx={{ px: 1 }}>
-      {name || "Unassigned"}
-    </Typography>
+    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 1 }}>
+      <Typography fontSize={13.5} fontWeight={name && name !== "—" ? 650 : 500} fontStyle={name && name !== "—" ? "normal" : "italic"} color={name && name !== "—" ? "text.primary" : "text.secondary"}>
+        {name || "Unassigned"}
+      </Typography>
+
+      {hasCritical && (
+        <Chip
+          label="Issue"
+          size="small"
+          sx={{
+            height: 18,
+            fontSize: 10,
+            fontWeight: 900,
+            color: "#be123c",
+            backgroundColor: "#ffe4e6",
+          }}
+        />
+      )}
+
+      {!hasCritical && hasWarning && (
+        <Chip
+          label="Warning"
+          size="small"
+          sx={{
+            height: 18,
+            fontSize: 10,
+            fontWeight: 900,
+            color: "#b45309",
+            backgroundColor: "#fef3c7",
+          }}
+        />
+      )}
+    </Stack>
   );
 }
 

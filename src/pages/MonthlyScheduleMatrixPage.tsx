@@ -37,6 +37,11 @@ import {
   parseLocalDate,
   residentTraining,
 } from "../utils/nightFloatSchedule";
+import {
+  detectDailyScheduleIssues,
+  issueSeverityStyle,
+  type ScheduleIssue,
+} from "../utils/schedulingIntelligence";
 
 type SchedulePerson = {
   id: string;
@@ -153,6 +158,20 @@ export default function MonthlyScheduleMatrixPage() {
     useMonthlySchedule(monthId);
 
   const days = useMemo(() => getDaysInMonth(monthId), [monthId]);
+  const monthlyAssignments = schedule?.assignments || {};
+
+  const scheduleIssues = useMemo(() => {
+    return days.flatMap((date) =>
+      detectDailyScheduleIssues({
+        date,
+        services: residentCallServices,
+        monthlyAssignments,
+        blocks,
+        blockAssignments,
+        residents,
+      })
+    );
+  }, [blockAssignments, blocks, days, monthlyAssignments, residents]);
 
   function getManualCell(date: string, service: ScheduleService) {
     return schedule?.assignments[`${date}_${service.id}`];
@@ -174,6 +193,12 @@ export default function MonthlyScheduleMatrixPage() {
 
   function isAutoCell(date: string, service: ScheduleService) {
     return !getManualCell(date, service) && Boolean(getAutoCell(date, service));
+  }
+
+  function getIssuesForCell(date: string, service: ScheduleService) {
+    return scheduleIssues.filter(
+      (issue) => issue.date === date && issue.serviceId === service.id
+    );
   }
 
   function getEligiblePeople(service: ScheduleService): SchedulePerson[] {
@@ -245,7 +270,7 @@ export default function MonthlyScheduleMatrixPage() {
             Daily Call Schedule
           </Typography>
           <Typography color="text.secondary" fontSize={14}>
-            Resident calls with night float auto-filled from exact block schedule assignments.
+            Resident calls with conflict warnings and editable night-float overrides.
           </Typography>
         </Box>
 
@@ -268,6 +293,8 @@ export default function MonthlyScheduleMatrixPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      <ScheduleIssuesPanel issues={scheduleIssues} />
+
       <Card sx={{ borderRadius: 3, boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)" }}>
         <CardContent sx={{ p: 1.25 }}>
           {loading ? (
@@ -281,7 +308,7 @@ export default function MonthlyScheduleMatrixPage() {
             <Box
               sx={{
                 overflow: "auto",
-                maxHeight: "calc(100vh - 170px)",
+                maxHeight: "calc(100vh - 235px)",
                 border: "1px solid",
                 borderColor: "divider",
                 borderRadius: 2,
@@ -296,13 +323,32 @@ export default function MonthlyScheduleMatrixPage() {
               >
                 <Box sx={topLeftCell}>Service</Box>
 
-                {days.map((day) => (
-                  <Box key={day} sx={isWeekend(day) ? weekendHeaderCell : weekdayHeaderCell}>
-                    <Typography fontSize={11.5} fontWeight={900}>
-                      {formatDay(day)}
-                    </Typography>
-                  </Box>
-                ))}
+                {days.map((day) => {
+                  const dayIssues = scheduleIssues.filter(
+                    (issue) => issue.date === day && issue.severity === "critical"
+                  );
+
+                  return (
+                    <Box key={day} sx={isWeekend(day) ? weekendHeaderCell : weekdayHeaderCell}>
+                      <Typography fontSize={11.5} fontWeight={900}>
+                        {formatDay(day)}
+                      </Typography>
+
+                      {dayIssues.length > 0 && (
+                        <Box
+                          sx={{
+                            mt: 0.35,
+                            mx: "auto",
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: "#be123c",
+                          }}
+                        />
+                      )}
+                    </Box>
+                  );
+                })}
 
                 {residentCallServices.map((service) => (
                   <Box key={service.id} sx={{ display: "contents" }}>
@@ -325,18 +371,34 @@ export default function MonthlyScheduleMatrixPage() {
                       const autoCell = isAutoCell(day, service);
                       const manualCell = getManualCell(day, service);
                       const weekend = isWeekend(day);
+                      const cellIssues = getIssuesForCell(day, service);
+                      const hasCriticalIssue = cellIssues.some(
+                        (issue) => issue.severity === "critical"
+                      );
+                      const hasWarningIssue = cellIssues.some(
+                        (issue) => issue.severity === "warning"
+                      );
 
                       return (
                         <Box
                           key={`${service.id}-${day}`}
                           sx={{
                             ...matrixCell,
-                            backgroundColor: autoCell
-                              ? "#f5f3ff"
-                              : weekend
-                                ? "#fff7ed"
-                                : "white",
+                            backgroundColor: hasCriticalIssue
+                              ? "#fff1f2"
+                              : hasWarningIssue
+                                ? "#fffbeb"
+                                : autoCell
+                                  ? "#f5f3ff"
+                                  : weekend
+                                    ? "#fff7ed"
+                                    : "white",
                             cursor: allowBuild ? "pointer" : "default",
+                            boxShadow: hasCriticalIssue
+                              ? "inset 0 0 0 2px #fecdd3"
+                              : hasWarningIssue
+                                ? "inset 0 0 0 2px #fde68a"
+                                : "none",
                           }}
                           onClick={() => {
                             if (!allowBuild) return;
@@ -350,6 +412,34 @@ export default function MonthlyScheduleMatrixPage() {
                               </Typography>
 
                               <LevelChip level={cell.training} />
+
+                              {hasCriticalIssue && (
+                                <Chip
+                                  label="Issue"
+                                  size="small"
+                                  sx={{
+                                    height: 17,
+                                    fontSize: 9.5,
+                                    fontWeight: 900,
+                                    color: "#be123c",
+                                    backgroundColor: "#ffe4e6",
+                                  }}
+                                />
+                              )}
+
+                              {!hasCriticalIssue && hasWarningIssue && (
+                                <Chip
+                                  label="Warning"
+                                  size="small"
+                                  sx={{
+                                    height: 17,
+                                    fontSize: 9.5,
+                                    fontWeight: 900,
+                                    color: "#b45309",
+                                    backgroundColor: "#fef3c7",
+                                  }}
+                                />
+                              )}
 
                               {autoCell && (
                                 <Chip
@@ -434,12 +524,132 @@ export default function MonthlyScheduleMatrixPage() {
           service={editingCell.service}
           people={getEligiblePeople(editingCell.service)}
           existingCell={getCell(editingCell.date, editingCell.service)}
+          issues={getIssuesForCell(editingCell.date, editingCell.service)}
           isAutoOnly={!getManualCell(editingCell.date, editingCell.service) && Boolean(getAutoCell(editingCell.date, editingCell.service))}
           onCancel={() => setEditingCell(null)}
           onSave={handleSaveCell}
         />
       )}
     </Box>
+  );
+}
+
+function ScheduleIssuesPanel({ issues }: { issues: ScheduleIssue[] }) {
+  const critical = issues.filter((issue) => issue.severity === "critical");
+  const warnings = issues.filter((issue) => issue.severity === "warning");
+  const info = issues.filter((issue) => issue.severity === "info");
+
+  if (issues.length === 0) {
+    return (
+      <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+        No schedule conflicts detected for this month.
+      </Alert>
+    );
+  }
+
+  return (
+    <Card sx={{ mb: 2, borderRadius: 3 }}>
+      <CardContent sx={{ p: 1.5 }}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          justifyContent="space-between"
+          spacing={1}
+          sx={{ mb: 1 }}
+        >
+          <Box>
+            <Typography fontWeight={900}>
+              Schedule Warnings
+            </Typography>
+            <Typography color="text.secondary" fontSize={12.5}>
+              Conflicts are warnings only. They do not block scheduling.
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            <IssueCountChip label="Critical" count={critical.length} severity="critical" />
+            <IssueCountChip label="Warning" count={warnings.length} severity="warning" />
+            <IssueCountChip label="Info" count={info.length} severity="info" />
+          </Stack>
+        </Stack>
+
+        <Stack spacing={0.6}>
+          {issues.slice(0, 8).map((issue) => {
+            const style = issueSeverityStyle(issue.severity);
+
+            return (
+              <Box
+                key={issue.id}
+                sx={{
+                  p: 0.75,
+                  borderRadius: 2,
+                  backgroundColor: style.bg,
+                  border: "1px solid",
+                  borderColor: style.border,
+                }}
+              >
+                <Stack direction={{ xs: "column", md: "row" }} spacing={0.75}>
+                  <Chip
+                    label={style.label}
+                    size="small"
+                    sx={{
+                      width: "fit-content",
+                      height: 20,
+                      fontSize: 10.5,
+                      fontWeight: 900,
+                      color: style.color,
+                      backgroundColor: "#ffffff",
+                      border: "1px solid",
+                      borderColor: style.border,
+                    }}
+                  />
+
+                  <Box>
+                    <Typography fontSize={12.5} fontWeight={900} sx={{ color: style.color }}>
+                      {issue.title}
+                    </Typography>
+                    <Typography fontSize={12} color="text.secondary">
+                      {issue.message}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            );
+          })}
+
+          {issues.length > 8 && (
+            <Typography fontSize={12} color="text.secondary">
+              + {issues.length - 8} more issue{issues.length - 8 === 1 ? "" : "s"}.
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+function IssueCountChip({
+  label,
+  count,
+  severity,
+}: {
+  label: string;
+  count: number;
+  severity: "critical" | "warning" | "info";
+}) {
+  const style = issueSeverityStyle(severity);
+
+  return (
+    <Chip
+      label={`${label}: ${count}`}
+      size="small"
+      sx={{
+        fontWeight: 900,
+        color: style.color,
+        backgroundColor: style.bg,
+        border: "1px solid",
+        borderColor: style.border,
+      }}
+    />
   );
 }
 
@@ -470,6 +680,7 @@ function MatrixCellDialog({
   service,
   people,
   existingCell,
+  issues,
   isAutoOnly,
   onCancel,
   onSave,
@@ -479,6 +690,7 @@ function MatrixCellDialog({
   service: ScheduleService;
   people: SchedulePerson[];
   existingCell?: MonthlyScheduleCell;
+  issues: ScheduleIssue[];
   isAutoOnly: boolean;
   onCancel: () => void;
   onSave: (data: {
@@ -510,6 +722,33 @@ function MatrixCellDialog({
             <Alert severity="info">
               This is currently auto-filled from the Block Schedule. Saving here will create a manual override for this date.
             </Alert>
+          )}
+
+          {issues.length > 0 && (
+            <Stack spacing={0.75}>
+              {issues.map((issue) => {
+                const style = issueSeverityStyle(issue.severity);
+                return (
+                  <Box
+                    key={issue.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 2,
+                      backgroundColor: style.bg,
+                      border: "1px solid",
+                      borderColor: style.border,
+                    }}
+                  >
+                    <Typography fontSize={12.5} fontWeight={900} sx={{ color: style.color }}>
+                      {issue.title}
+                    </Typography>
+                    <Typography fontSize={12} color="text.secondary">
+                      {issue.message}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Stack>
           )}
 
           <TextField label="Service" value={service.name} disabled fullWidth />
