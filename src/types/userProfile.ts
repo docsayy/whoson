@@ -15,6 +15,8 @@ export interface UserProfile {
   emailVerified: boolean;
   residentId?: string;
   attendingId?: string;
+  phone?: string;
+  inviteCode?: string;
   createdAt: string;
   lastLogin?: string;
 }

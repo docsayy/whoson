@@ -6,6 +6,8 @@ export type AppPage =
   | "schedule"
   | "block-schedule"
   | "coverage-rules"
+  | "invites"
+  | "backup-restore"
   | "call-swaps"
   | "vacation"
   | "settings";

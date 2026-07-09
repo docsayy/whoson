@@ -28,13 +28,23 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
+import BackupIcon from "@mui/icons-material/Backup";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
 
 import { useAuth } from "../context/AuthContext";
 import type { AppPage } from "../types/page";
+import { canManageResidents } from "../utils/permissions";
 
 const drawerWidth = 250;
 
-const navItems: { label: string; page: AppPage; icon: React.ReactNode }[] = [
+type NavItem = {
+  label: string;
+  page: AppPage;
+  icon: React.ReactNode;
+  adminOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { label: "Who's On", page: "whos-on", icon: <CalendarTodayIcon /> },
   { label: "Residents", page: "residents", icon: <PeopleIcon /> },
   { label: "Attendings", page: "attendings", icon: <BadgeIcon /> },
@@ -46,6 +56,18 @@ const navItems: { label: string; page: AppPage; icon: React.ReactNode }[] = [
   { label: "Daily Call Schedule", page: "schedule", icon: <CalendarMonthIcon /> },
   { label: "Block Schedule", page: "block-schedule", icon: <ViewWeekIcon /> },
   { label: "Coverage Rules", page: "coverage-rules", icon: <MenuBookIcon /> },
+  {
+    label: "Invitations",
+    page: "invites",
+    icon: <VpnKeyIcon />,
+    adminOnly: true,
+  },
+  {
+    label: "Backup / Restore",
+    page: "backup-restore",
+    icon: <BackupIcon />,
+    adminOnly: true,
+  },
   { label: "Call Swaps", page: "call-swaps", icon: <SwapHorizIcon /> },
   { label: "Vacation", page: "vacation", icon: <BeachAccessIcon /> },
   { label: "Settings", page: "settings", icon: <SettingsIcon /> },
@@ -62,6 +84,13 @@ export default function DashboardLayout({
 }) {
   const { user, profile, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const allowManage = canManageResidents(profile?.role);
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.adminOnly) return true;
+    return allowManage;
+  });
 
   function handleNavigate(page: AppPage) {
     onPageChange(page);
@@ -81,7 +110,7 @@ export default function DashboardLayout({
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
 
       <List dense>
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <ListItemButton
             key={item.page}
             selected={item.page === currentPage}
@@ -106,6 +135,7 @@ export default function DashboardLayout({
             <ListItemIcon sx={{ color: "inherit", minWidth: 34 }}>
               {item.icon}
             </ListItemIcon>
+
             <ListItemText
               primary={item.label}
               primaryTypographyProps={{ fontSize: 13 }}
@@ -117,7 +147,7 @@ export default function DashboardLayout({
   );
 
   return (
-    <Box sx={{ display: "flex" }}>
+    <Box sx={{ display: "flex", width: "100%", minWidth: 0 }}>
       <CssBaseline />
 
       <AppBar
@@ -129,23 +159,36 @@ export default function DashboardLayout({
           boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
         }}
       >
-        <Toolbar sx={{ justifyContent: "space-between", gap: 1 }}>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+        <Toolbar
+          sx={{
+            justifyContent: "space-between",
+            gap: 1,
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 1, sm: 2 },
+          }}
+        >
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
             <IconButton edge="start" onClick={() => setDrawerOpen(true)}>
               <MenuIcon />
             </IconButton>
 
-            <Typography variant="h6" noWrap fontWeight={800}>
+            <Typography
+              variant="h6"
+              noWrap
+              fontWeight={800}
+              sx={{ fontSize: { xs: 17, sm: 20 } }}
+            >
               WhosOn
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
             <Box sx={{ textAlign: "right", display: { xs: "none", sm: "block" } }}>
-              <Typography variant="body2" fontWeight={700}>
+              <Typography variant="body2" fontWeight={700} noWrap>
                 {profile?.displayName || user?.email}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+
+              <Typography variant="caption" color="text.secondary" noWrap>
                 {profile?.role || "User"}
               </Typography>
             </Box>
@@ -155,7 +198,10 @@ export default function DashboardLayout({
               variant="outlined"
               startIcon={<LogoutIcon />}
               onClick={logout}
-              sx={{ minWidth: { xs: 40, sm: 90 } }}
+              sx={{
+                minWidth: { xs: 40, sm: 90 },
+                px: { xs: 1, sm: 1.5 },
+              }}
             >
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
                 Logout
@@ -186,14 +232,17 @@ export default function DashboardLayout({
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
+          width: "100%",
+          maxWidth: "100vw",
           minHeight: "100vh",
           backgroundColor: "#f8fafc",
-          p: { xs: 1.5, sm: 2, md: 2 },
-          width: "100%",
+          p: { xs: 1, sm: 1.5, md: 2 },
+          overflowX: "hidden",
         }}
       >
-        <Toolbar />
-        {children}
+        <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
+        <Box sx={{ width: "100%", minWidth: 0 }}>{children}</Box>
       </Box>
     </Box>
   );

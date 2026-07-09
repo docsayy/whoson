@@ -1,34 +1,40 @@
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  reload,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   type User,
 } from "firebase/auth";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+
 import { auth } from "../config/firebase";
+import { getInviteByCode, markInviteUsed } from "../services/inviteService";
 import {
   createUserProfile,
-  findApprovedPersonByEmail,
+  ensureSuperAdminProfile,
   getUserProfile,
-  repairUserProfileLink,
+  isSuperAdminEmail,
   updateUserLoginState,
 } from "../services/userService";
+import type { InviteCode } from "../types/inviteCode";
 import type { UserProfile } from "../types/userProfile";
 
-const ALLOWED_EMAIL_DOMAIN = "@jhmc.org";
+type SignupParams = {
+  email: string;
+  password: string;
+  inviteCode: string;
+  phone: string;
+};
 
 type AuthContextValue = {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (params: SignupParams) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  resendVerification: (email: string, password: string) => Promise<void>;
+  previewInvite: (inviteCode: string) => Promise<InviteCode>;
   logout: () => Promise<void>;
 };
 
@@ -36,16 +42,6 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function validateHospitalEmail(email: string) {
-  if (!normalizeEmail(email).endsWith(ALLOWED_EMAIL_DOMAIN)) {
-    throw new Error(`Only ${ALLOWED_EMAIL_DOMAIN} emails are allowed.`);
-  }
-}
-
-function formatLoginProblem(parts: string[]) {
-  return `Unable to sign in:\n\n${parts.map((item) => `• ${item}`).join("\n")}`;
 }
 
 function withLoginState(profile: UserProfile): UserProfile {
@@ -56,177 +52,107 @@ function withLoginState(profile: UserProfile): UserProfile {
   };
 }
 
+function requireActiveProfile(profile: UserProfile | null) {
+  if (!profile) throw new Error("No WhosOn profile was found for this account.");
+  if (!profile.active) throw new Error("Your WhosOn profile is inactive.");
+  if (!profile.approved) throw new Error("Your WhosOn profile is not approved yet.");
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function login(email: string, password: string) {
-    const cleanEmail = normalizeEmail(email);
-    validateHospitalEmail(cleanEmail);
+  const authActionInProgress = useRef(false);
 
-    const credential = await signInWithEmailAndPassword(
-      auth,
-      cleanEmail,
-      password
-    );
+  async function loadProfileForUser(firebaseUser: User) {
+    let userProfile = await getUserProfile(firebaseUser.uid);
 
-    await reload(credential.user);
-
-    const problems: string[] = [];
-
-    let approvedPerson: Awaited<
-      ReturnType<typeof findApprovedPersonByEmail>
-    > | null = null;
-
-    try {
-      approvedPerson = await findApprovedPersonByEmail(cleanEmail);
-    } catch (err) {
-      problems.push(
-        err instanceof Error
-          ? err.message
-          : "Your email is not listed in Residents or Attendings."
-      );
-    }
-
-    let userProfile = await getUserProfile(credential.user.uid);
-
-    if (!userProfile && approvedPerson) {
-      userProfile = await createUserProfile({
-        uid: credential.user.uid,
-        email: cleanEmail,
-        displayName: approvedPerson.displayName,
-        role: approvedPerson.role,
-        residentId: approvedPerson.residentId,
-        attendingId: approvedPerson.attendingId,
-        emailVerified: credential.user.emailVerified,
+    if (!userProfile && firebaseUser.email && isSuperAdminEmail(firebaseUser.email)) {
+      userProfile = await ensureSuperAdminProfile({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
       });
     }
 
-    if (
-      userProfile &&
-      approvedPerson &&
-      !userProfile.residentId &&
-      !userProfile.attendingId
-    ) {
-      await repairUserProfileLink(credential.user.uid, {
-        displayName: approvedPerson.displayName,
-        role: approvedPerson.role,
-        residentId: approvedPerson.residentId,
-        attendingId: approvedPerson.attendingId,
-        emailVerified: credential.user.emailVerified,
-      });
+    requireActiveProfile(userProfile);
 
-      userProfile = await getUserProfile(credential.user.uid);
-    }
+    const updatedProfile = withLoginState(userProfile!);
 
-    if (!credential.user.emailVerified) {
-      try {
-        await sendEmailVerification(credential.user);
-      } catch {
-        // Firebase may block frequent duplicate verification sends.
-      }
-
-      problems.push(
-        "Your hospital email is not verified yet. I sent another verification email. Please open the newest verification email, verify once, then sign in again."
-      );
-    }
-
-    if (!userProfile) {
-      problems.push("No app user profile was found for this Firebase account.");
-    } else {
-      if (!userProfile.active) {
-        problems.push("Your app user profile is inactive.");
-      }
-
-      if (!userProfile.approved) {
-        problems.push("Your app user profile is not approved.");
-      }
-
-      if (!userProfile.residentId && !userProfile.attendingId) {
-        problems.push(
-          "Your app user profile is not linked to a resident or attending profile."
-        );
-      }
-    }
-
-    if (problems.length > 0 || !userProfile) {
-      await signOut(auth);
-      setUser(null);
-      setProfile(null);
-      throw new Error(formatLoginProblem(problems));
-    }
-
-    const updatedProfile = withLoginState(userProfile);
-
-    await updateUserLoginState(credential.user.uid, {
+    await updateUserLoginState(firebaseUser.uid, {
       emailVerified: true,
       lastLogin: updatedProfile.lastLogin,
     });
 
-    setUser(credential.user);
+    setUser(firebaseUser);
     setProfile(updatedProfile);
+
+    return updatedProfile;
   }
 
-  async function signup(email: string, password: string) {
-    const cleanEmail = normalizeEmail(email);
-    validateHospitalEmail(cleanEmail);
+  async function login(email: string, password: string) {
+    try {
+      authActionInProgress.current = true;
 
-    const approvedPerson = await findApprovedPersonByEmail(cleanEmail);
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        normalizeEmail(email),
+        password
+      );
 
-    const credential = await createUserWithEmailAndPassword(
-      auth,
-      cleanEmail,
-      password
-    );
+      await loadProfileForUser(credential.user);
+    } finally {
+      authActionInProgress.current = false;
+    }
+  }
 
-    await createUserProfile({
-      uid: credential.user.uid,
-      email: cleanEmail,
-      displayName: approvedPerson.displayName,
-      role: approvedPerson.role,
-      residentId: approvedPerson.residentId,
-      attendingId: approvedPerson.attendingId,
-      emailVerified: credential.user.emailVerified,
-    });
+  async function previewInvite(inviteCode: string) {
+    return getInviteByCode(inviteCode);
+  }
 
-    await sendEmailVerification(credential.user);
-    await signOut(auth);
+  async function signup(params: SignupParams) {
+    try {
+      authActionInProgress.current = true;
 
-    throw new Error(
-      "Account created. Please check your hospital email and verify your account before signing in."
-    );
+      const cleanEmail = normalizeEmail(params.email);
+      const cleanCode = params.inviteCode.trim().toUpperCase();
+
+      const invite = await getInviteByCode(cleanCode);
+
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        cleanEmail,
+        params.password
+      );
+
+      await createUserProfile({
+        uid: credential.user.uid,
+        email: cleanEmail,
+        displayName: invite.displayName,
+        role: invite.role,
+        residentId: invite.residentId,
+        attendingId: invite.attendingId,
+        phone: params.phone.trim(),
+        inviteCode: cleanCode,
+        emailVerified: true,
+      });
+
+      await markInviteUsed({
+        code: cleanCode,
+        uid: credential.user.uid,
+        email: cleanEmail,
+      });
+
+      await loadProfileForUser(credential.user);
+    } finally {
+      authActionInProgress.current = false;
+    }
   }
 
   async function resetPassword(email: string) {
     const cleanEmail = normalizeEmail(email);
-    validateHospitalEmail(cleanEmail);
-
-    await findApprovedPersonByEmail(cleanEmail);
+    if (!cleanEmail) throw new Error("Please enter your email first.");
     await sendPasswordResetEmail(auth, cleanEmail);
-  }
-
-  async function resendVerification(email: string, password: string) {
-    const cleanEmail = normalizeEmail(email);
-    validateHospitalEmail(cleanEmail);
-
-    await findApprovedPersonByEmail(cleanEmail);
-
-    const credential = await signInWithEmailAndPassword(
-      auth,
-      cleanEmail,
-      password
-    );
-
-    await reload(credential.user);
-
-    if (credential.user.emailVerified) {
-      await signOut(auth);
-      throw new Error("This email is already verified. Please sign in normally.");
-    }
-
-    await sendEmailVerification(credential.user);
-    await signOut(auth);
   }
 
   async function logout() {
@@ -237,6 +163,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (authActionInProgress.current) return;
+
       try {
         setLoading(true);
 
@@ -246,33 +174,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        await reload(firebaseUser);
-
-        if (!firebaseUser.emailVerified) {
-          setUser(null);
-          setProfile(null);
-          await signOut(auth);
-          return;
-        }
-
-        const userProfile = await getUserProfile(firebaseUser.uid);
-
-        if (!userProfile || !userProfile.active || !userProfile.approved) {
-          setUser(null);
-          setProfile(null);
-          await signOut(auth);
-          return;
-        }
-
-        const updatedProfile = withLoginState(userProfile);
-
-        await updateUserLoginState(firebaseUser.uid, {
-          emailVerified: true,
-          lastLogin: updatedProfile.lastLogin,
-        });
-
-        setUser(firebaseUser);
-        setProfile(updatedProfile);
+        await loadProfileForUser(firebaseUser);
+      } catch (err) {
+        console.error("Auth profile load failed:", err);
+        setUser(null);
+        setProfile(null);
+        await signOut(auth);
       } finally {
         setLoading(false);
       }
@@ -290,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         signup,
         resetPassword,
-        resendVerification,
+        previewInvite,
         logout,
       }}
     >
@@ -301,10 +208,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const value = useContext(AuthContext);
-
-  if (!value) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
-
+  if (!value) throw new Error("useAuth must be used inside AuthProvider");
   return value;
 }

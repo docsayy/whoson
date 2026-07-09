@@ -13,6 +13,8 @@ import MonthlyScheduleMatrixPage from "./pages/MonthlyScheduleMatrixPage";
 import BlockSchedulePage from "./pages/BlockSchedulePage";
 import ResidentScheduleProfilePage from "./pages/ResidentScheduleProfilePage";
 import CoverageRulesPage from "./pages/CoverageRulesPage";
+import BackupRestorePage from "./pages/BackupRestorePage";
+import InvitesPage from "./pages/InvitesPage";
 
 import type { AppPage } from "./types/page";
 
@@ -33,7 +35,9 @@ function PlaceholderPage({ title }: { title: string }) {
 function AppContent() {
   const { user, profile, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState<AppPage>("whos-on");
-  const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
+  const [selectedResidentId, setSelectedResidentId] = useState<string | null>(
+    null
+  );
 
   if (loading) {
     return (
@@ -67,7 +71,9 @@ function AppContent() {
   ) : (
     {
       "whos-on": <WhosOnPage onOpenResidentProfile={setSelectedResidentId} />,
-      residents: <ResidentsPage onOpenResidentProfile={setSelectedResidentId} />,
+      residents: (
+        <ResidentsPage onOpenResidentProfile={setSelectedResidentId} />
+      ),
       attendings: <AttendingsPage />,
       "attending-call-schedule": <AttendingCallSchedulePage />,
       schedule: (
@@ -79,6 +85,8 @@ function AppContent() {
         <BlockSchedulePage onOpenResidentProfile={setSelectedResidentId} />
       ),
       "coverage-rules": <CoverageRulesPage />,
+      invites: <InvitesPage />,
+      "backup-restore": <BackupRestorePage />,
       "call-swaps": <PlaceholderPage title="Call Swaps" />,
       vacation: <PlaceholderPage title="Vacation" />,
       settings: <PlaceholderPage title="Settings" />,

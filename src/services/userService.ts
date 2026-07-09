@@ -1,12 +1,21 @@
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+
 import { db } from "../config/firebase";
 import { getAttendings } from "./attendingService";
 import { getResidents } from "./residentService";
 import type { AppRole, UserProfile } from "../types/userProfile";
 
-const SUPER_ADMIN_EMAILS = [
-  "msayyar@jhmc.org",
-];
+const SUPER_ADMIN_EMAILS = ["msayyar@jhmc.org"];
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export function isSuperAdminEmail(email: string) {
+  return SUPER_ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(
+    normalizeEmail(email)
+  );
+}
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const ref = doc(db, "users", uid);
@@ -23,9 +32,11 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     role: data.role || "Resident",
     active: data.active !== false,
     approved: data.approved !== false,
-    emailVerified: Boolean(data.emailVerified),
+    emailVerified: data.emailVerified !== false,
     residentId: data.residentId,
     attendingId: data.attendingId,
+    phone: data.phone,
+    inviteCode: data.inviteCode,
     createdAt: data.createdAt || new Date().toISOString(),
     lastLogin: data.lastLogin,
   };
@@ -38,9 +49,9 @@ export async function findApprovedPersonByEmail(email: string): Promise<{
   residentId?: string;
   attendingId?: string;
 }> {
-  const cleanEmail = email.trim().toLowerCase();
+  const cleanEmail = normalizeEmail(email);
 
-  if (SUPER_ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(cleanEmail)) {
+  if (isSuperAdminEmail(cleanEmail)) {
     return {
       email: cleanEmail,
       displayName: "Super Admin",
@@ -54,14 +65,8 @@ export async function findApprovedPersonByEmail(email: string): Promise<{
   );
 
   if (resident) {
-    const canLogin = (resident as unknown as { canLogin?: boolean }).canLogin;
-
     if (!resident.active) {
       throw new Error("Your resident profile exists but is inactive.");
-    }
-
-    if (canLogin === false) {
-      throw new Error("Your resident profile exists, but Can Login is turned off.");
     }
 
     return {
@@ -78,14 +83,8 @@ export async function findApprovedPersonByEmail(email: string): Promise<{
   );
 
   if (attending) {
-    const canLogin = (attending as unknown as { canLogin?: boolean }).canLogin;
-
     if (!attending.active) {
       throw new Error("Your attending profile exists but is inactive.");
-    }
-
-    if (canLogin === false) {
-      throw new Error("Your attending profile exists, but Can Login is turned off.");
     }
 
     return {
@@ -96,9 +95,7 @@ export async function findApprovedPersonByEmail(email: string): Promise<{
     };
   }
 
-  throw new Error(
-    "No matching resident, attending, or admin authorization was found for this email."
-  );
+  throw new Error("No matching resident, attending, or admin authorization was found.");
 }
 
 export async function createUserProfile(params: {
@@ -108,23 +105,40 @@ export async function createUserProfile(params: {
   role: AppRole;
   residentId?: string;
   attendingId?: string;
+  phone?: string;
+  inviteCode?: string;
   emailVerified?: boolean;
 }) {
   const profile: UserProfile = {
     uid: params.uid,
-    email: params.email.trim().toLowerCase(),
+    email: normalizeEmail(params.email),
     displayName: params.displayName,
     role: params.role,
     active: true,
     approved: true,
-    emailVerified: Boolean(params.emailVerified),
+    emailVerified: params.emailVerified !== false,
     residentId: params.residentId,
     attendingId: params.attendingId,
+    phone: params.phone,
+    inviteCode: params.inviteCode,
     createdAt: new Date().toISOString(),
   };
 
   await setDoc(doc(db, "users", params.uid), profile, { merge: true });
   return profile;
+}
+
+export async function ensureSuperAdminProfile(params: {
+  uid: string;
+  email: string;
+}) {
+  return createUserProfile({
+    uid: params.uid,
+    email: params.email,
+    displayName: "Super Admin",
+    role: "Admin",
+    emailVerified: true,
+  });
 }
 
 export async function updateUserRole(uid: string, role: AppRole) {
@@ -155,7 +169,7 @@ export async function repairUserProfileLink(
     attendingId: data.attendingId,
     approved: true,
     active: true,
-    emailVerified: Boolean(data.emailVerified),
+    emailVerified: data.emailVerified !== false,
     updatedAt: new Date().toISOString(),
   });
 }
