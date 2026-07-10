@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
+  Alert,
   AppBar,
   Box,
   Button,
-  CssBaseline,
   Divider,
   Drawer,
   IconButton,
@@ -17,61 +17,15 @@ import {
 } from "@mui/material";
 
 import MenuIcon from "@mui/icons-material/Menu";
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
-import PeopleIcon from "@mui/icons-material/People";
-import BadgeIcon from "@mui/icons-material/Badge";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import ViewWeekIcon from "@mui/icons-material/ViewWeek";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import BeachAccessIcon from "@mui/icons-material/BeachAccess";
-import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
-import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
-import MenuBookIcon from "@mui/icons-material/MenuBook";
-import BackupIcon from "@mui/icons-material/Backup";
-import VpnKeyIcon from "@mui/icons-material/VpnKey";
 
+import { getNavItem } from "../config/navigation";
 import { useAuth } from "../context/AuthContext";
+import { useSidebarSettings } from "../hooks/useSidebarSettings";
 import type { AppPage } from "../types/page";
 import { canManageResidents } from "../utils/permissions";
 
 const drawerWidth = 250;
-
-type NavItem = {
-  label: string;
-  page: AppPage;
-  icon: React.ReactNode;
-  adminOnly?: boolean;
-};
-
-const navItems: NavItem[] = [
-  { label: "Who's On", page: "whos-on", icon: <CalendarTodayIcon /> },
-  { label: "Residents", page: "residents", icon: <PeopleIcon /> },
-  { label: "Attendings", page: "attendings", icon: <BadgeIcon /> },
-  {
-    label: "Attending Call Schedule",
-    page: "attending-call-schedule",
-    icon: <LocalHospitalIcon />,
-  },
-  { label: "Daily Call Schedule", page: "schedule", icon: <CalendarMonthIcon /> },
-  { label: "Block Schedule", page: "block-schedule", icon: <ViewWeekIcon /> },
-  { label: "Coverage Rules", page: "coverage-rules", icon: <MenuBookIcon /> },
-  {
-    label: "Invitations",
-    page: "invites",
-    icon: <VpnKeyIcon />,
-    adminOnly: true,
-  },
-  {
-    label: "Backup / Restore",
-    page: "backup-restore",
-    icon: <BackupIcon />,
-    adminOnly: true,
-  },
-  { label: "Call Swaps", page: "call-swaps", icon: <SwapHorizIcon /> },
-  { label: "Vacation", page: "vacation", icon: <BeachAccessIcon /> },
-  { label: "Settings", page: "settings", icon: <SettingsIcon /> },
-];
 
 export default function DashboardLayout({
   children,
@@ -83,14 +37,24 @@ export default function DashboardLayout({
   onPageChange: (page: AppPage) => void;
 }) {
   const { user, profile, logout } = useAuth();
+  const { settings, error } = useSidebarSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const allowManage = canManageResidents(profile?.role);
+  const isManager = canManageResidents(profile?.role);
 
-  const visibleNavItems = navItems.filter((item) => {
-    if (!item.adminOnly) return true;
-    return allowManage;
-  });
+  const visibleNavItems = useMemo(
+    () =>
+      settings.items
+        .filter((preference) =>
+          isManager
+            ? preference.visibleToManagers
+            : preference.visibleToStandardUsers
+        )
+        .map((preference) => getNavItem(preference.page))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .filter((item) => !item.managerOnly || isManager),
+    [isManager, settings.items]
+  );
 
   function handleNavigate(page: AppPage) {
     onPageChange(page);
@@ -102,7 +66,7 @@ export default function DashboardLayout({
       <Toolbar />
 
       <Box sx={{ p: 1.5 }}>
-        <Typography variant="overline" sx={{ color: "#94a3b8" }}>
+        <Typography variant="overline" sx={{ color: "rgba(255,255,255,0.62)" }}>
           Main Menu
         </Typography>
       </Box>
@@ -148,14 +112,13 @@ export default function DashboardLayout({
 
   return (
     <Box sx={{ display: "flex", width: "100%", minWidth: 0 }}>
-      <CssBaseline />
-
       <AppBar
         position="fixed"
+        color="default"
         sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          backgroundColor: "white",
-          color: "#0f172a",
+          borderBottom: "1px solid",
+          borderColor: "divider",
           boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
         }}
       >
@@ -220,7 +183,7 @@ export default function DashboardLayout({
           [`& .MuiDrawer-paper`]: {
             width: drawerWidth,
             boxSizing: "border-box",
-            backgroundColor: "#0f172a",
+            backgroundColor: (theme) => theme.palette.primary.dark,
             color: "white",
           },
         }}
@@ -236,12 +199,19 @@ export default function DashboardLayout({
           width: "100%",
           maxWidth: "100vw",
           minHeight: "100vh",
-          backgroundColor: "#f8fafc",
+          backgroundColor: "background.default",
           p: { xs: 1, sm: 1.5, md: 2 },
           overflowX: "hidden",
         }}
       >
         <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
+
+        {error && isManager && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         <Box sx={{ width: "100%", minWidth: 0 }}>{children}</Box>
       </Box>
     </Box>

@@ -3,9 +3,11 @@ import { Box, CircularProgress, Typography } from "@mui/material";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
+import AppThemeProvider from "./theme/AppThemeProvider";
 
 import LoginPage from "./pages/LoginPage";
 import WhosOnPage from "./pages/WhosOnPage";
+import PhoneDirectoryPage from "./pages/PhoneDirectoryPage";
 import ResidentsPage from "./pages/ResidentsPage";
 import AttendingsPage from "./pages/AttendingsPage";
 import AttendingCallSchedulePage from "./pages/AttendingCallSchedulePage";
@@ -15,6 +17,7 @@ import ResidentScheduleProfilePage from "./pages/ResidentScheduleProfilePage";
 import CoverageRulesPage from "./pages/CoverageRulesPage";
 import BackupRestorePage from "./pages/BackupRestorePage";
 import InvitesPage from "./pages/InvitesPage";
+import SettingsPage from "./pages/SettingsPage";
 
 import type { AppPage } from "./types/page";
 
@@ -24,7 +27,6 @@ function PlaceholderPage({ title }: { title: string }) {
       <Typography variant="h4" fontWeight={800}>
         {title}
       </Typography>
-
       <Typography color="text.secondary" sx={{ mt: 1 }}>
         This section is currently under development.
       </Typography>
@@ -54,9 +56,7 @@ function AppContent() {
     );
   }
 
-  if (!user || !profile) {
-    return <LoginPage />;
-  }
+  if (!user || !profile) return <LoginPage />;
 
   function handlePageChange(page: AppPage) {
     setCurrentPage(page);
@@ -71,6 +71,7 @@ function AppContent() {
   ) : (
     {
       "whos-on": <WhosOnPage onOpenResidentProfile={setSelectedResidentId} />,
+      directory: <PhoneDirectoryPage />,
       residents: (
         <ResidentsPage onOpenResidentProfile={setSelectedResidentId} />
       ),
@@ -89,7 +90,7 @@ function AppContent() {
       "backup-restore": <BackupRestorePage />,
       "call-swaps": <PlaceholderPage title="Call Swaps" />,
       vacation: <PlaceholderPage title="Vacation" />,
-      settings: <PlaceholderPage title="Settings" />,
+      settings: <SettingsPage />,
     }[currentPage]
   );
 
@@ -103,7 +104,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <AppThemeProvider>
+        <AppContent />
+      </AppThemeProvider>
     </AuthProvider>
   );
 }

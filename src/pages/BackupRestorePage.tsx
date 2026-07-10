@@ -14,13 +14,9 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import RestoreIcon from "@mui/icons-material/Restore";
+import SecurityIcon from "@mui/icons-material/Security";
 
-import {
-  collection,
-  doc,
-  getDocs,
-  writeBatch,
-} from "firebase/firestore";
+import { collection, doc, getDocs, writeBatch } from "firebase/firestore";
 
 import { db } from "../config/firebase";
 import { useAuth } from "../context/AuthContext";
@@ -33,12 +29,14 @@ type BackupDocument = {
 
 type BackupFile = {
   appName: "WhosOn";
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   collections: Record<string, BackupDocument[]>;
 };
 
 const BACKUP_COLLECTIONS = [
+  "users",
+  "inviteCodes",
   "residents",
   "attendings",
   "rotations",
@@ -71,13 +69,30 @@ function timestampForFile() {
 function validateBackupFile(value: unknown): value is BackupFile {
   if (!value || typeof value !== "object") return false;
 
-  const file = value as BackupFile;
+  const file = value as Partial<BackupFile>;
 
   if (file.appName !== "WhosOn") return false;
-  if (file.version !== 1) return false;
+  if (file.version !== 1 && file.version !== 2) return false;
   if (!file.collections || typeof file.collections !== "object") return false;
 
   return true;
+}
+
+function collectionLabel(collectionName: string) {
+  const labels: Record<string, string> = {
+    users: "User profiles",
+    inviteCodes: "Invite codes",
+    residents: "Residents",
+    attendings: "Attendings",
+    rotations: "Rotations",
+    academicBlocks: "Academic blocks",
+    blockAssignments: "Block assignments",
+    monthlySchedules: "Daily call schedules",
+    attendingScheduleAssignments: "Attending schedules",
+    services: "Services",
+  };
+
+  return labels[collectionName] || collectionName;
 }
 
 export default function BackupRestorePage() {
@@ -89,6 +104,9 @@ export default function BackupRestorePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [lastExportSummary, setLastExportSummary] = useState<
+    Record<string, number>
+  >({});
 
   async function exportBackup() {
     if (!allowManage) return;
@@ -97,13 +115,16 @@ export default function BackupRestorePage() {
       setBusy(true);
       setMessage("");
       setError("");
+      setLastExportSummary({});
 
       const backup: BackupFile = {
         appName: "WhosOn",
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         collections: {},
       };
+
+      const summary: Record<string, number> = {};
 
       for (const collectionName of BACKUP_COLLECTIONS) {
         const snapshot = await getDocs(collection(db, collectionName));
@@ -112,10 +133,13 @@ export default function BackupRestorePage() {
           id: docSnap.id,
           data: docSnap.data(),
         }));
+
+        summary[collectionName] = snapshot.docs.length;
       }
 
       downloadJson(`whoson-backup-${timestampForFile()}.json`, backup);
 
+      setLastExportSummary(summary);
       setMessage("Backup downloaded successfully.");
     } catch (err) {
       console.error(err);
@@ -163,11 +187,9 @@ export default function BackupRestorePage() {
         const docs = parsed.collections[collectionName] || [];
 
         for (const backupDoc of docs) {
-          batch.set(
-            doc(db, collectionName, backupDoc.id),
-            backupDoc.data,
-            { merge: true }
-          );
+          batch.set(doc(db, collectionName, backupDoc.id), backupDoc.data, {
+            merge: true,
+          });
 
           batchCount += 1;
           restoredDocs += 1;
@@ -181,9 +203,12 @@ export default function BackupRestorePage() {
       setMessage(`Restore completed. ${restoredDocs} document(s) restored.`);
     } catch (err) {
       console.error(err);
-      setError("Unable to restore backup. Make sure this is a valid WhosOn backup JSON file.");
+      setError(
+        "Unable to restore backup. Make sure this is a valid WhosOn backup JSON file."
+      );
     } finally {
       setBusy(false);
+
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -222,7 +247,8 @@ export default function BackupRestorePage() {
           </Typography>
 
           <Typography color="text.secondary" fontSize={14}>
-            Export or restore the Firestore scheduling database.
+            Export or restore WhosOn Firestore data, including user profiles and
+            invite codes.
           </Typography>
         </Box>
 
@@ -248,17 +274,28 @@ export default function BackupRestorePage() {
               border: "1px solid #bbf7d0",
             }}
           />
+
+          <Chip
+            label="Includes invites"
+            size="small"
+            sx={{
+              fontWeight: 850,
+              color: "#7c3aed",
+              backgroundColor: "#f5f3ff",
+              border: "1px solid #ddd6fe",
+            }}
+          />
         </Stack>
       </Stack>
 
       {message && (
-        <Alert severity="success" sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
           {message}
         </Alert>
       )}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
           {error}
         </Alert>
       )}
@@ -279,17 +316,24 @@ export default function BackupRestorePage() {
                 </Typography>
 
                 <Typography color="text.secondary" fontSize={13.5}>
-                  Downloads a JSON file containing residents, attendings, rotations,
-                  blocks, daily call schedules, attending schedules, and services.
+                  Downloads a JSON file containing schedules, residents,
+                  attendings, rotations, services, user profiles, and invite
+                  codes.
                 </Typography>
               </Box>
 
               <Button
                 variant="contained"
-                startIcon={busy ? <CircularProgress size={18} /> : <DownloadIcon />}
+                startIcon={
+                  busy ? <CircularProgress size={18} /> : <DownloadIcon />
+                }
                 onClick={exportBackup}
                 disabled={busy}
-                sx={{ textTransform: "none", fontWeight: 850, width: "fit-content" }}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 850,
+                  width: "fit-content",
+                }}
               >
                 Export Backup
               </Button>
@@ -306,8 +350,9 @@ export default function BackupRestorePage() {
                 </Typography>
 
                 <Typography color="text.secondary" fontSize={13.5}>
-                  Upload a WhosOn backup JSON file. Matching document IDs will be
-                  overwritten. Extra documents not in the backup are not deleted.
+                  Upload a WhosOn backup JSON file. Matching document IDs will
+                  be overwritten. Extra documents not in the backup are not
+                  deleted.
                 </Typography>
               </Box>
 
@@ -324,10 +369,16 @@ export default function BackupRestorePage() {
 
               <Button
                 variant="outlined"
-                startIcon={busy ? <CircularProgress size={18} /> : <UploadFileIcon />}
+                startIcon={
+                  busy ? <CircularProgress size={18} /> : <UploadFileIcon />
+                }
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                sx={{ textTransform: "none", fontWeight: 850, width: "fit-content" }}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 850,
+                  width: "fit-content",
+                }}
               >
                 Choose Backup File
               </Button>
@@ -340,6 +391,76 @@ export default function BackupRestorePage() {
         <CardContent sx={{ p: 2 }}>
           <Stack spacing={1}>
             <Stack direction="row" spacing={1} alignItems="center">
+              <SecurityIcon color="primary" />
+              <Typography fontWeight={900}>Included collections</Typography>
+            </Stack>
+
+            <Typography fontSize={13.5} color="text.secondary">
+              This backup includes the following Firestore collections:
+            </Typography>
+
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              {BACKUP_COLLECTIONS.map((collectionName) => (
+                <Chip
+                  key={collectionName}
+                  label={collectionLabel(collectionName)}
+                  size="small"
+                  sx={{
+                    fontWeight: 800,
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                />
+              ))}
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {Object.keys(lastExportSummary).length > 0 && (
+        <Card sx={{ mt: 2, borderRadius: 3 }}>
+          <CardContent sx={{ p: 2 }}>
+            <Stack spacing={1}>
+              <Typography fontWeight={900}>Last export summary</Typography>
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "repeat(2, 1fr)",
+                    md: "repeat(3, 1fr)",
+                  },
+                  gap: 1,
+                }}
+              >
+                {Object.entries(lastExportSummary).map(([name, count]) => (
+                  <Box
+                    key={name}
+                    sx={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 2,
+                      p: 1,
+                      backgroundColor: "#f8fafc",
+                    }}
+                  >
+                    <Typography fontSize={12.5} color="text.secondary">
+                      {collectionLabel(name)}
+                    </Typography>
+
+                    <Typography fontWeight={900}>{count} document(s)</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card sx={{ mt: 2, borderRadius: 3 }}>
+        <CardContent sx={{ p: 2 }}>
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
               <RestoreIcon color="warning" />
               <Typography fontWeight={900}>
                 Important restore behavior
@@ -347,15 +468,16 @@ export default function BackupRestorePage() {
             </Stack>
 
             <Typography fontSize={13.5} color="text.secondary">
-              Restore uses merge mode. It updates or recreates documents from the backup,
-              but it does not delete newer documents that are not present in the backup.
-              This is safer for accidental restores.
+              Restore uses merge mode. It updates or recreates documents from
+              the backup, but it does not delete newer documents that are not
+              present in the backup. This is safer for accidental restores.
             </Typography>
 
             <Typography fontSize={13.5} color="text.secondary">
-              Before changing Firebase projects or moving to a shorter project name,
-              export a backup here, switch your Firebase config, deploy the app, and
-              restore the backup into the new Firestore database.
+              Firebase Authentication users and passwords are not stored in
+              Firestore backups. If you move Firebase projects, you still need
+              to recreate login accounts in Firebase Authentication or have
+              users sign up again with invite codes.
             </Typography>
           </Stack>
         </CardContent>

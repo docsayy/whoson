@@ -6,6 +6,7 @@ export interface RotationRequirement {
     | "ICU"
     | "Night Float"
     | "Ambulatory"
+    | "Elective"
     | "Consult"
     | "Jeopardy"
     | "Vacation"

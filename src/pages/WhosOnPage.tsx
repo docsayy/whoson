@@ -20,6 +20,7 @@ import TodayIcon from "@mui/icons-material/Today";
 import { useAuth } from "../context/AuthContext";
 import { useAcademicBlocks } from "../hooks/useAcademicBlocks";
 import { useAttendingSchedule } from "../hooks/useAttendingSchedule";
+import { useAttendings } from "../hooks/useAttendings";
 import { useBlockAssignments } from "../hooks/useBlockAssignments";
 import { useMonthlySchedule } from "../hooks/useMonthlySchedule";
 import { useResidents } from "../hooks/useResidents";
@@ -58,6 +59,34 @@ const residentCallRows = [
   { ids: [EXACT_NF_SERVICE_IDS.pgy3, "weekend-pgy3-nf"], names: ["PGY3 NF", "Weekend PGY3 NF"], name: "PGY3 NF", time: "7p-7a", level: "PGY-3", order: 14 },
 ];
 
+type ResidentConsultKey =
+  | "cardio-ccu"
+  | "id-pgy1"
+  | "id-senior"
+  | "gi"
+  | "endo-rheum-nephro"
+  | "pulm"
+  | "hem-onc"
+  | "neuro";
+
+const residentConsultRows: {
+  key: ResidentConsultKey;
+  name: string;
+  time: string;
+  level: string;
+  order: number;
+}[] = [
+  { key: "cardio-ccu", name: "Cardio/CCU", time: "7a-4p", level: "PGY-2, PGY-3", order: 15 },
+  { key: "id-pgy1", name: "ID PGY1", time: "7a-4p", level: "PGY-1", order: 16 },
+  { key: "id-senior", name: "ID Senior", time: "7a-4p", level: "PGY-2, PGY-3", order: 17 },
+  { key: "gi", name: "GI", time: "7a-4p", level: "PGY-2, PGY-3", order: 18 },
+  { key: "endo-rheum-nephro", name: "Endo/Rheum/Nephro", time: "7a-4p", level: "PGY-2, PGY-3", order: 19 },
+  { key: "pulm", name: "Pulm", time: "7a-4p", level: "PGY-2, PGY-3", order: 20 },
+  { key: "hem-onc", name: "Hem-Onc", time: "7a-4p", level: "PGY-2, PGY-3", order: 21 },
+  { key: "neuro", name: "Neuro", time: "7a-4p", level: "PGY-2, PGY-3", order: 22 },
+];
+
+
 function toDateInputValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -88,6 +117,160 @@ function formatDisplayDate(date: Date) {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isWeekday(date: string) {
+  const day = fromDateInputValue(date).getDay();
+  return day >= 1 && day <= 5;
+}
+
+function matchesAny(value: string, aliases: string[]) {
+  const normalized = normalizeText(value);
+  return aliases.some((alias) => normalized.includes(normalizeText(alias)));
+}
+
+function getResidentConsultKey(
+  rotationId: string,
+  rotationName: string,
+  residentPgy?: string
+): ResidentConsultKey | null {
+  const source = `${rotationId} ${rotationName}`;
+  const normalizedId = normalizeText(rotationId);
+  const normalizedName = normalizeText(rotationName);
+
+  if (
+    normalizedId === "id" ||
+    normalizedName === "id" ||
+    matchesAny(source, [
+      "infectious disease",
+      "infectious",
+      "id consult",
+      "id rotation",
+    ])
+  ) {
+    return residentPgy === "PGY-1" ? "id-pgy1" : "id-senior";
+  }
+
+  if (
+    (normalizedId === "cardio" ||
+      normalizedId === "cardiology" ||
+      normalizedId === "ccu" ||
+      normalizedId === "cardioccu" ||
+      normalizedName === "cardio" ||
+      normalizedName === "cardiology" ||
+      normalizedName === "ccu" ||
+      normalizedName === "cardioccu" ||
+      matchesAny(source, [
+        "cardiology",
+        "cardio",
+        "ccu consult",
+        "cardio ccu",
+      ])) &&
+    !matchesAny(source, ["night float", "pgy1 nf", "pgy2 nf"])
+  ) {
+    return "cardio-ccu";
+  }
+
+  if (
+    normalizedId === "gi" ||
+    normalizedName === "gi" ||
+    matchesAny(source, ["gastroenterology", "gastro", "gi consult"])
+  ) {
+    return "gi";
+  }
+
+  if (
+    normalizedId === "end" ||
+    normalizedId === "endo" ||
+    normalizedId === "rheum" ||
+    normalizedId === "nephro" ||
+    normalizedId === "endorheumnephro" ||
+    normalizedName === "endo" ||
+    normalizedName === "rheum" ||
+    normalizedName === "nephro" ||
+    normalizedName === "endorheumnephro" ||
+    matchesAny(source, [
+      "endo rheum neph",
+      "endocrinology rheumatology nephrology",
+      "endocrinology",
+      "rheumatology",
+      "nephrology",
+      "nephro",
+    ])
+  ) {
+    return "endo-rheum-nephro";
+  }
+
+  if (
+    (normalizedId === "pulm" ||
+      normalizedName === "pulm" ||
+      matchesAny(source, [
+        "pulmonology",
+        "pulmonary",
+        "pulm consult",
+        "pulm",
+      ])) &&
+    !matchesAny(source, ["micu"])
+  ) {
+    return "pulm";
+  }
+
+  if (
+    normalizedId === "hemonc" ||
+    normalizedId === "hemoncology" ||
+    normalizedName === "hemonc" ||
+    normalizedName === "hemoncology" ||
+    matchesAny(source, [
+      "hematology oncology",
+      "hematology/oncology",
+      "heme onc",
+      "hem onc",
+      "hemonc",
+    ])
+  ) {
+    return "hem-onc";
+  }
+
+  if (
+    normalizedId === "neuro" ||
+    normalizedName === "neuro" ||
+    matchesAny(source, ["neurology", "neuro consult", "neuro"])
+  ) {
+    return "neuro";
+  }
+
+  return null;
+}
+
+function shortenSpecialtyName(value: string) {
+  const withoutOnCall = value
+    .replace(/\s*[-–—]?\s*on\s*call\s*$/i, "")
+    .replace(/\s*on-call\s*$/i, "")
+    .trim();
+
+  const normalized = normalizeText(withoutOnCall);
+
+  if (normalized.includes("gastroenterology") || normalized === "gastro") return "GI";
+  if (normalized.includes("infectiousdisease") || normalized === "infectious") return "ID";
+  if (
+    normalized.includes("hematologyoncology") ||
+    normalized.includes("hemeonc") ||
+    normalized.includes("hemonc")
+  ) {
+    return "Hem-Onc";
+  }
+  if (normalized.includes("endocrinology") && normalized.includes("rheumatology") && normalized.includes("nephrology")) {
+    return "Endo/Rheum/Nephro";
+  }
+  if (normalized.includes("nephrology")) return "Nephro";
+  if (normalized.includes("pulmonology") || normalized.includes("pulmonary")) return "Pulm";
+  if (normalized.includes("cardiology")) return "Cardio";
+  if (normalized.includes("neurology")) return "Neuro";
+  if (normalized.includes("rheumatology")) return "Rheum";
+  if (normalized.includes("endocrinology")) return "Endo";
+  if (normalized.includes("criticalcare") || normalized === "medicalicu") return "MICU";
+
+  return withoutOnCall;
 }
 
 function findMonthlyCell(
@@ -199,6 +382,12 @@ export default function WhosOnPage({
     error: attendingError,
   } = useAttendingSchedule();
 
+  const {
+    attendings,
+    loading: attendingsLoading,
+    error: attendingsError,
+  } = useAttendings();
+
   const monthlyAssignments = schedule?.assignments || {};
   const isResidentCallPublished = schedule?.status === "published";
   const canViewResidentCall = allowBuild || isResidentCallPublished;
@@ -216,6 +405,34 @@ export default function WhosOnPage({
     }
     return map;
   }, [residents]);
+
+  const attendingsById = useMemo(() => {
+    const map: Record<string, (typeof attendings)[number]> = {};
+    for (const attending of attendings) {
+      map[attending.id] = attending;
+    }
+    return map;
+  }, [attendings]);
+
+  const attendingByName = useMemo(() => {
+    const map: Record<string, (typeof attendings)[number]> = {};
+    for (const attending of attendings) {
+      map[normalizeText(attending.displayName)] = attending;
+    }
+    return map;
+  }, [attendings]);
+
+  function getAttendingPhone(assignment: AttendingScheduleAssignment) {
+    const profileById = assignment.attendingId
+      ? attendingsById[assignment.attendingId]
+      : undefined;
+
+    const profileByName = assignment.attendingName
+      ? attendingByName[normalizeText(assignment.attendingName)]
+      : undefined;
+
+    return assignment.phone || profileById?.phone || profileByName?.phone || "—";
+  }
 
   const currentBlock = useMemo(() => {
     return blocks.find(
@@ -293,7 +510,86 @@ export default function WhosOnPage({
     todayIssues,
   ]);
 
-  const assignedCallCount = callRows.filter((row) => row.name).length;
+
+  const residentConsultCoverageRows = useMemo(() => {
+    if (!currentBlock || !isWeekday(selectedDateKey)) return [];
+
+    const todayMicuSenior = findMonthlyCell(
+      selectedDateKey,
+      residentCallRows.find((row) => row.ids.includes("micu-senior"))!,
+      monthlyAssignments
+    )?.residentId;
+
+    const previousDateKey = toDateInputValue(addDays(selectedDate, -1));
+    const previousMicuSenior = findMonthlyCell(
+      previousDateKey,
+      residentCallRows.find((row) => row.ids.includes("micu-senior"))!,
+      monthlyAssignments
+    )?.residentId;
+
+    const assignmentsByKey = new Map<
+      ResidentConsultKey,
+      (typeof blockAssignments)[number]
+    >();
+
+    for (const assignment of blockAssignments) {
+      if (assignment.blockId !== currentBlock.id) continue;
+
+      const resident = residentsById[assignment.residentId];
+      if (!resident?.active) continue;
+
+      const key = getResidentConsultKey(
+        assignment.rotationId,
+        assignment.rotationName,
+        resident.pgy
+      );
+
+      if (!key) continue;
+
+      if (
+        key === "pulm" &&
+        (assignment.residentId === todayMicuSenior ||
+          assignment.residentId === previousMicuSenior)
+      ) {
+        continue;
+      }
+
+      if (!assignmentsByKey.has(key)) {
+        assignmentsByKey.set(key, assignment);
+      }
+    }
+
+    return residentConsultRows.map((row) => {
+      const assignment = assignmentsByKey.get(row.key);
+      const resident = assignment
+        ? residentsById[assignment.residentId]
+        : undefined;
+
+      return {
+        service: row.name,
+        time: row.time,
+        name: assignment?.residentName || "",
+        residentId: assignment?.residentId || "",
+        level: resident?.pgy || row.level,
+        pager: resident?.pager || "",
+        issues: [] as ScheduleIssue[],
+      };
+    });
+  }, [
+    blockAssignments,
+    currentBlock,
+    monthlyAssignments,
+    residentsById,
+    selectedDate,
+    selectedDateKey,
+  ]);
+
+  const displayedCallRows = useMemo(
+    () => [...callRows, ...residentConsultCoverageRows],
+    [callRows, residentConsultCoverageRows]
+  );
+
+  const assignedCallCount = displayedCallRows.filter((row) => row.name).length;
 
   const allServiceRows = useMemo(() => {
     if (!currentBlock) return [];
@@ -344,12 +640,17 @@ export default function WhosOnPage({
       .filter((assignment) => isActiveOnDate(assignment, selectedDateKey))
       .sort((a, b) => a.serviceName.localeCompare(b.serviceName))
       .map((assignment) => ({
-        specialty: assignment.serviceName,
+        specialty: shortenSpecialtyName(assignment.serviceName),
         consultant: assignment.attendingName,
         coverage: assignment.coverageNote || `${assignment.coverageStartTime}-${assignment.coverageEndTime}`,
-        phone: assignment.phone || "—",
+        phone: getAttendingPhone(assignment),
       }));
-  }, [attendingAssignments, selectedDateKey]);
+  }, [
+    attendingAssignments,
+    attendingByName,
+    attendingsById,
+    selectedDateKey,
+  ]);
 
   const consultingRows = useMemo(() => {
     return attendingAssignments
@@ -357,17 +658,31 @@ export default function WhosOnPage({
       .filter((assignment) => isActiveOnDate(assignment, selectedDateKey))
       .sort((a, b) => a.serviceName.localeCompare(b.serviceName))
       .map((assignment) => ({
-        specialty: assignment.serviceName,
+        specialty: shortenSpecialtyName(assignment.serviceName),
         consultant: assignment.attendingName,
         coverage: assignment.coverageNote || `${assignment.coverageStartTime}-${assignment.coverageEndTime}`,
-        phone: assignment.phone || "—",
+        phone: getAttendingPhone(assignment),
       }));
-  }, [attendingAssignments, selectedDateKey]);
+  }, [
+    attendingAssignments,
+    attendingByName,
+    attendingsById,
+    selectedDateKey,
+  ]);
 
   const loading =
-    monthlyLoading || blocksLoading || blockAssignmentsLoading || attendingLoading;
+    monthlyLoading ||
+    blocksLoading ||
+    blockAssignmentsLoading ||
+    attendingLoading ||
+    attendingsLoading;
 
-  const error = monthlyError || blocksError || blockAssignmentsError || attendingError;
+  const error =
+    monthlyError ||
+    blocksError ||
+    blockAssignmentsError ||
+    attendingError ||
+    attendingsError;
 
   const timeText = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -598,7 +913,7 @@ export default function WhosOnPage({
               Resident call schedule is not published yet.
             </Typography>
           ) : mode === "call" ? (
-            <ResidentCallsTable rows={callRows} onOpenResident={openResidentByName} />
+            <ResidentCallsTable rows={displayedCallRows} onOpenResident={openResidentByName} />
           ) : mode === "all" ? (
             <AllServicesTable rows={allServiceRows} onOpenResident={openResidentByName} />
           ) : mode === "admitting" ? (
@@ -725,24 +1040,24 @@ function ResidentCallsTable({
   return (
     <TableShell
       desktopColumns="minmax(165px, 1.15fr) 95px minmax(155px, 1.45fr) 86px 90px"
-      mobileColumns="minmax(118px, 1.15fr) minmax(76px, 0.75fr) minmax(120px, 1.25fr)"
+      mobileColumns="minmax(104px, 1fr) 68px minmax(105px, 1.1fr) minmax(82px, 0.8fr)"
     >
       <HeaderRow
         desktopColumns="minmax(165px, 1.15fr) 95px minmax(155px, 1.45fr) 86px 90px"
-        mobileColumns="minmax(118px, 1.15fr) minmax(76px, 0.75fr) minmax(120px, 1.25fr)"
+        mobileColumns="minmax(104px, 1fr) 68px minmax(105px, 1.1fr) minmax(82px, 0.8fr)"
       >
         <HeaderCell>Service</HeaderCell>
         <HeaderCell>Time</HeaderCell>
         <HeaderCell>Resident</HeaderCell>
         <HeaderCell sx={{ display: { xs: "none", md: "block" } }}>Level</HeaderCell>
-        <HeaderCell sx={{ display: { xs: "none", md: "block" } }}>Pager</HeaderCell>
+        <HeaderCell>Pager</HeaderCell>
       </HeaderRow>
 
       {rows.map((row, index) => (
         <DataRow
           key={`${row.service}-${index}`}
           desktopColumns="minmax(165px, 1.15fr) 95px minmax(155px, 1.45fr) 86px 90px"
-          mobileColumns="minmax(118px, 1.15fr) minmax(76px, 0.75fr) minmax(120px, 1.25fr)"
+          mobileColumns="minmax(104px, 1fr) 68px minmax(105px, 1.1fr) minmax(82px, 0.8fr)"
           index={index}
         >
           <ServiceCell label={row.service} />
@@ -751,7 +1066,7 @@ function ResidentCallsTable({
           <Box sx={{ display: { xs: "none", md: "block" } }}>
             <LevelBadge level={row.level} />
           </Box>
-          <Box sx={{ display: { xs: "none", md: "block" } }}>
+          <Box>
             <PagerCell pager={row.pager} />
           </Box>
         </DataRow>
@@ -811,31 +1126,44 @@ function AttendingServicesTable({
   return (
     <TableShell
       desktopColumns="minmax(220px, 1.4fr) minmax(165px, 1.1fr) 105px minmax(130px, 0.9fr)"
-      mobileColumns="minmax(155px, 1.15fr) minmax(125px, 0.9fr) minmax(90px, 0.75fr)"
+      mobileColumns="minmax(92px, 0.8fr) minmax(105px, 1fr) minmax(104px, 0.95fr)"
     >
       <HeaderRow
         desktopColumns="minmax(220px, 1.4fr) minmax(165px, 1.1fr) 105px minmax(130px, 0.9fr)"
-        mobileColumns="minmax(155px, 1.15fr) minmax(125px, 0.9fr) minmax(90px, 0.75fr)"
+        mobileColumns="minmax(92px, 0.8fr) minmax(105px, 1fr) minmax(104px, 0.95fr)"
       >
         <HeaderCell>Service</HeaderCell>
         <HeaderCell>Consultant</HeaderCell>
-        <HeaderCell>Coverage</HeaderCell>
-        <HeaderCell sx={{ display: { xs: "none", md: "block" } }}>Phone</HeaderCell>
+        <HeaderCell sx={{ display: { xs: "none", md: "block" } }}>Coverage</HeaderCell>
+        <HeaderCell>Phone</HeaderCell>
       </HeaderRow>
 
       {rows.map((row, index) => (
         <DataRow
           key={`${row.specialty}-${index}`}
           desktopColumns="minmax(220px, 1.4fr) minmax(165px, 1.1fr) 105px minmax(130px, 0.9fr)"
-          mobileColumns="minmax(155px, 1.15fr) minmax(125px, 0.9fr) minmax(90px, 0.75fr)"
+          mobileColumns="minmax(92px, 0.8fr) minmax(105px, 1fr) minmax(104px, 0.95fr)"
           index={index}
         >
           <ServiceCell label={row.specialty} />
           <Typography fontSize={{ xs: 12.5, md: 13.5 }} fontWeight={700} sx={{ px: { xs: 0.5, md: 1 } }} noWrap>
             {row.consultant || "Unassigned"}
           </Typography>
-          <Chip label={row.coverage} size="small" sx={{ width: "fit-content", maxWidth: "100%", fontWeight: 800, fontSize: { xs: 10.5, md: 12 }, height: { xs: 22, md: 24 }, ...coverageBadgeColor(row.coverage) }} />
-          <Typography fontSize={13} fontWeight={700} sx={{ display: { xs: "none", md: "block" }, color: row.phone === "—" ? "text.secondary" : "#2563eb" }}>
+          <Box sx={{ display: { xs: "none", md: "block" } }}>
+            <Chip label={row.coverage} size="small" sx={{ width: "fit-content", maxWidth: "100%", fontWeight: 800, fontSize: 12, height: 24, ...coverageBadgeColor(row.coverage) }} />
+          </Box>
+          <Typography
+            component={row.phone !== "—" ? "a" : "span"}
+            href={row.phone !== "—" ? `tel:${row.phone}` : undefined}
+            fontSize={{ xs: 11.5, md: 13 }}
+            fontWeight={800}
+            noWrap
+            sx={{
+              px: { xs: 0.35, md: 0 },
+              color: row.phone === "—" ? "text.secondary" : "#2563eb",
+              textDecoration: "none",
+            }}
+          >
             ☎ {row.phone}
           </Typography>
         </DataRow>
@@ -1082,10 +1410,10 @@ function PagerCell({ pager }: { pager: string }) {
     <Typography
       component={pager ? "a" : "span"}
       href={pager ? `tel:${pager}` : undefined}
-      fontSize={13}
+      fontSize={{ xs: 11.5, md: 13 }}
       fontWeight={800}
       sx={{
-        px: 1,
+        px: { xs: 0.35, md: 1 },
         color: pager ? "#2563eb" : "text.secondary",
         textDecoration: "none",
         whiteSpace: "nowrap",

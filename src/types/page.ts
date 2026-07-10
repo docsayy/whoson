@@ -1,5 +1,6 @@
 export type AppPage =
   | "whos-on"
+  | "directory"
   | "residents"
   | "attendings"
   | "attending-call-schedule"

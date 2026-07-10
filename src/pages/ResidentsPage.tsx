@@ -27,10 +27,15 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ToggleOffIcon from "@mui/icons-material/ToggleOff";
 import ToggleOnIcon from "@mui/icons-material/ToggleOn";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { useAuth } from "../context/AuthContext";
+import { createInviteCode, generateInviteCode } from "../services/inviteService";
 import { useResidents } from "../hooks/useResidents";
+import type { InviteCode } from "../types/inviteCode";
 import type { PGY, Resident, ResidentRole } from "../types/resident";
+import type { AppRole } from "../types/userProfile";
 import { canManageResidents } from "../utils/permissions";
 
 type ResidentTab = "Everyone" | "PGY-1" | "PGY-2" | "PGY-3";
@@ -47,6 +52,23 @@ const emptyResident: Resident = {
   role: "Resident",
   active: true,
 };
+
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+function roleForResident(resident: Resident): AppRole {
+  if (resident.role === "Chief Resident") return "Chief Resident";
+  if (resident.role === "Program Coordinator") return "Program Coordinator";
+  if (resident.role === "Attending") return "Attending";
+  return "Resident";
+}
+
+async function copyText(value: string) {
+  await navigator.clipboard.writeText(value);
+}
 
 export default function ResidentsPage({
   onOpenResidentProfile,
@@ -69,6 +91,12 @@ export default function ResidentsPage({
   const [search, setSearch] = useState("");
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [addingResident, setAddingResident] = useState(false);
+
+  const [inviteBusyResidentId, setInviteBusyResidentId] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [latestInviteCode, setLatestInviteCode] = useState("");
+  const [latestInviteName, setLatestInviteName] = useState("");
 
   const filteredResidents = useMemo(() => {
     return residents
@@ -132,6 +160,58 @@ export default function ResidentsPage({
     await removeResident(id);
   }
 
+  async function handleGenerateInvite(resident: Resident) {
+    if (!allowManage) return;
+
+    try {
+      setInviteBusyResidentId(resident.id);
+      setInviteError("");
+      setInviteMessage("");
+      setLatestInviteCode("");
+      setLatestInviteName("");
+
+      const code = generateInviteCode();
+
+      const invite: InviteCode = {
+        code,
+        displayName: resident.displayName,
+        role: roleForResident(resident),
+        personType: "resident",
+        residentId: resident.id,
+        expiresAt: addDays(7),
+        used: false,
+        active: true,
+        createdAt: new Date().toISOString(),
+        createdByUid: profile?.uid,
+      };
+
+      const createdCode = await createInviteCode(invite);
+
+      setLatestInviteCode(createdCode);
+      setLatestInviteName(resident.displayName);
+      setInviteMessage(`Invite created for ${resident.displayName}.`);
+    } catch (err) {
+      console.error(err);
+      setInviteError(
+        err instanceof Error ? err.message : "Unable to generate invite."
+      );
+    } finally {
+      setInviteBusyResidentId("");
+    }
+  }
+
+  async function handleCopyLatestInvite() {
+    try {
+      if (!latestInviteCode) return;
+      await copyText(latestInviteCode);
+      setInviteMessage(`Copied invite code for ${latestInviteName}.`);
+      setInviteError("");
+    } catch (err) {
+      console.error(err);
+      setInviteError("Unable to copy invite code.");
+    }
+  }
+
   return (
     <Box>
       <Stack
@@ -174,6 +254,66 @@ export default function ResidentsPage({
         </Alert>
       )}
 
+      {inviteError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {inviteError}
+        </Alert>
+      )}
+
+      {inviteMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {inviteMessage}
+        </Alert>
+      )}
+
+      {latestInviteCode && (
+        <Card
+          sx={{
+            mb: 2,
+            borderRadius: 3,
+            border: "1px solid #bbf7d0",
+            backgroundColor: "#f0fdf4",
+          }}
+        >
+          <CardContent sx={{ p: 2 }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              alignItems={{ xs: "stretch", sm: "center" }}
+              spacing={1.5}
+            >
+              <Box>
+                <Typography fontWeight={900} color="#166534">
+                  New invite for {latestInviteName}
+                </Typography>
+
+                <Typography
+                  fontFamily="monospace"
+                  fontWeight={900}
+                  fontSize={{ xs: 18, md: 22 }}
+                  color="#14532d"
+                >
+                  {latestInviteCode}
+                </Typography>
+
+                <Typography fontSize={13} color="text.secondary">
+                  This code expires in 7 days and can be used once.
+                </Typography>
+              </Box>
+
+              <Button
+                variant="contained"
+                startIcon={<ContentCopyIcon />}
+                onClick={handleCopyLatestInvite}
+                sx={{ textTransform: "none", fontWeight: 850 }}
+              >
+                Copy Code
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
       <Card sx={{ mb: 2, borderRadius: 2 }}>
         <CardContent sx={{ p: 1.5 }}>
           <Stack spacing={1.5}>
@@ -212,12 +352,12 @@ export default function ResidentsPage({
             </Stack>
           ) : (
             <Box sx={{ overflowX: "auto" }}>
-              <Box sx={{ minWidth: allowManage ? 850 : 680 }}>
+              <Box sx={{ minWidth: allowManage ? 960 : 680 }}>
                 <Box
                   sx={{
                     display: "grid",
                     gridTemplateColumns: allowManage
-                      ? "minmax(220px,1.5fr) 100px 150px 100px 190px"
+                      ? "minmax(220px,1.5fr) 100px 150px 100px 300px"
                       : "minmax(220px,1.5fr) 100px 150px 100px",
                     gap: 1,
                     px: 1,
@@ -239,7 +379,7 @@ export default function ResidentsPage({
                     sx={{
                       display: "grid",
                       gridTemplateColumns: allowManage
-                        ? "minmax(220px,1.5fr) 100px 150px 100px 190px"
+                        ? "minmax(220px,1.5fr) 100px 150px 100px 300px"
                         : "minmax(220px,1.5fr) 100px 150px 100px",
                       gap: 1,
                       alignItems: "center",
@@ -317,6 +457,26 @@ export default function ResidentsPage({
                           >
                             <CalendarMonthIcon fontSize="small" />
                           </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Generate signup invite">
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="success"
+                              disabled={
+                                !resident.active ||
+                                inviteBusyResidentId === resident.id
+                              }
+                              onClick={() => handleGenerateInvite(resident)}
+                            >
+                              {inviteBusyResidentId === resident.id ? (
+                                <CircularProgress size={17} />
+                              ) : (
+                                <VpnKeyIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </span>
                         </Tooltip>
 
                         <Tooltip title="Edit">
