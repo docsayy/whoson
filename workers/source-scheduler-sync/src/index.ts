@@ -155,8 +155,8 @@ function array(value: JsonValue, key?: string): JsonValue[] {
 async function runSync(env: Env) {
   const startedAt = new Date().toISOString();
   const today = new Date(`${dateValue(new Date())}T00:00:00Z`);
-  const start = dateValue(addDays(today, -45));
-  const end = dateValue(addDays(today, 400));
+  const start = dateValue(addDays(today, -30));
+  const end = dateValue(addDays(today, 330));
   const qs = `start=${start}&end=${end}`;
   const cookie = await sourceLogin(env);
   const paths = {
