@@ -14,7 +14,7 @@ export type AppThemeSettings = {
 };
 
 export type SidebarSettings = {
-  version: 3;
+  version: 4;
   items: SidebarItemPreference[];
   theme: AppThemeSettings;
 };
