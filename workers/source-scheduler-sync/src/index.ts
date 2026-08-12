@@ -125,8 +125,8 @@ function documentName(env: Env, collection: string, id: string) {
 }
 
 async function commitWrites(env: Env, token: string, writes: Array<{ collection: string; id: string; data: { [key: string]: JsonValue } }>) {
-  for (let index = 0; index < writes.length; index += 300) {
-    const chunk = writes.slice(index, index + 300);
+  for (let index = 0; index < writes.length; index += 450) {
+    const chunk = writes.slice(index, index + 450);
     const response = await fetch(
       `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:commit`,
       {
@@ -152,24 +152,74 @@ function array(value: JsonValue, key?: string): JsonValue[] {
   return [];
 }
 
+function mergeChunks(name: string, chunks: JsonValue[]): JsonValue {
+  if (name === "callSchedule" || name === "inpatientServices" || name === "clinicServices") {
+    const days = chunks.flatMap((chunk) => array(chunk, "days"));
+    const first = (chunks[0] && !Array.isArray(chunks[0]) && typeof chunks[0] === "object")
+      ? chunks[0] as { [key: string]: JsonValue }
+      : {};
+    return { ...first, days };
+  }
+  return chunks.flatMap((chunk) => array(chunk));
+}
+
+async function fetchRangedDatasets(cookie: string, start: string, end: string) {
+  const collected: Record<string, JsonValue[]> = {
+    callSchedule: [],
+    attendingCoverage: [],
+    absences: [],
+    lectures: [],
+    inpatientServices: [],
+    clinicServices: [],
+  };
+  const finalDate = new Date(`${end}T00:00:00Z`);
+  const groups = [
+    {
+      chunkDays: 120,
+      paths: (qs: string) => ({
+        callSchedule: `/api/call-schedule?${qs}`,
+        attendingCoverage: `/api/attending-coverage?${qs}`,
+        absences: `/api/absences?${qs}`,
+        lectures: `/api/lectures?${qs}`,
+      }),
+    },
+    {
+      chunkDays: 31,
+      paths: (qs: string) => ({
+        inpatientServices: `/api/service-assignments?kind=inpatient&${qs}`,
+        clinicServices: `/api/service-assignments?kind=clinic&${qs}`,
+      }),
+    },
+  ];
+  for (const group of groups) {
+    for (let cursor = new Date(`${start}T00:00:00Z`); cursor <= finalDate; cursor = addDays(cursor, group.chunkDays)) {
+      const chunkStart = dateValue(cursor);
+      const chunkEnd = dateValue(new Date(Math.min(addDays(cursor, group.chunkDays - 1).getTime(), finalDate.getTime())));
+      const qs = `start=${chunkStart}&end=${chunkEnd}`;
+      const entries = await Promise.all(Object.entries(group.paths(qs)).map(async ([name, path]) => {
+        try {
+          return [name, await sourceJson(path, cookie)] as const;
+        } catch (error) {
+          throw new Error(`${name}:${error instanceof Error ? error.message : String(error)}`);
+        }
+      }));
+      for (const [name, data] of entries) collected[name].push(data);
+    }
+  }
+  return Object.fromEntries(Object.entries(collected).map(([name, chunks]) => [name, mergeChunks(name, chunks)]));
+}
+
 async function runSync(env: Env) {
   const startedAt = new Date().toISOString();
   const today = new Date(`${dateValue(new Date())}T00:00:00Z`);
   const start = dateValue(addDays(today, -30));
   const end = dateValue(addDays(today, 330));
-  const qs = `start=${start}&end=${end}`;
   const cookie = await sourceLogin(env);
-  const paths = {
-    blockSchedule: "/api/block-schedule",
-    callSchedule: `/api/call-schedule?${qs}`,
-    attendingCoverage: `/api/attending-coverage?${qs}`,
-    absences: `/api/absences?${qs}`,
-    lectures: `/api/lectures?${qs}`,
-    inpatientServices: `/api/service-assignments?kind=inpatient&${qs}`,
-    clinicServices: `/api/service-assignments?kind=clinic&${qs}`,
-  } as const;
-  const entries = await Promise.all(Object.entries(paths).map(async ([name, path]) => [name, await sourceJson(path, cookie)] as const));
-  const datasets = Object.fromEntries(entries) as Record<string, JsonValue>;
+  const blockSchedule = await sourceJson("/api/block-schedule", cookie);
+  const datasets = {
+    blockSchedule,
+    ...await fetchRangedDatasets(cookie, start, end),
+  } as Record<string, JsonValue>;
   const writes: Array<{ collection: string; id: string; data: { [key: string]: JsonValue } }> = [];
 
   const blocks = datasets.blockSchedule as { [key: string]: JsonValue };
