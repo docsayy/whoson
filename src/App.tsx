@@ -25,37 +25,42 @@ import PwaManager from "./components/PwaManager";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const WhosOnPage = lazy(() => import("./pages/SourceWhosOnPage"));
-const PublicWhosOnPage = lazy(() => import("./pages/PublicWhosOnPage"));
+const PublicWhosOnPage = lazy(() => import("./pages/PublicSourceWhosOnPage"));
 const PhoneDirectoryPage = lazy(() => import("./pages/PhoneDirectoryPage"));
 const ResidentsPage = lazy(() => import("./pages/ResidentsPage"));
 const AttendingsPage = lazy(() => import("./pages/AttendingsPage"));
 const AttendingCallSchedulePage = lazy(
-  () => import("./pages/SourceAttendingSchedulePage")
+  () => import("./pages/SourceAttendingSchedulePage"),
 );
-const AttendingProfilePage = lazy(() => import("./pages/SourceAttendingProfilePage"));
+const AttendingProfilePage = lazy(
+  () => import("./pages/SourceAttendingProfilePage"),
+);
 const ConsultServiceProfilePage = lazy(
-  () => import("./pages/ConsultServiceProfilePage")
+  () => import("./pages/ConsultServiceProfilePage"),
 );
 const MonthlyScheduleMatrixPage = lazy(
-  () => import("./pages/SourceCallSchedulePage")
+  () => import("./pages/SourceCallSchedulePage"),
 );
 const BlockSchedulePage = lazy(() => import("./pages/SourceBlockSchedulePage"));
 const ResidentScheduleProfilePage = lazy(
-  () => import("./pages/SourceResidentProfilePage")
+  () => import("./pages/SourceResidentProfilePage"),
 );
-const LectureSchedulePage = lazy(() => import("./pages/SourceLectureSchedulePage"));
+const LectureSchedulePage = lazy(
+  () => import("./pages/SourceLectureSchedulePage"),
+);
 const CoverageRulesPage = lazy(() => import("./pages/CoverageRulesPage"));
 const CalendarSubscriptionPage = lazy(
-  () => import("./pages/CalendarSubscriptionPage")
+  () => import("./pages/CalendarSubscriptionPage"),
 );
 const ScheduleIntegrityPage = lazy(
-  () => import("./pages/ScheduleIntegrityPage")
+  () => import("./pages/ScheduleIntegrityPage"),
 );
 const CallSwapsPage = lazy(() => import("./pages/CallSwapsPage"));
-const BackupRestorePage = lazy(() => import("./pages/BackupRestorePage"));
 const InvitesPage = lazy(() => import("./pages/InvitesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const ExternalScheduleSyncPage = lazy(() => import("./pages/ExternalScheduleSyncPage"));
+const ExternalScheduleSyncPage = lazy(
+  () => import("./pages/ExternalScheduleSyncPage"),
+);
 
 function LoadingScreen({ fullPage = false }: { fullPage?: boolean }) {
   return (
@@ -157,7 +162,10 @@ function AuthenticatedApp() {
               />
             }
           />
-          <Route path="/residents/:residentId" element={<ResidentProfileRoute />} />
+          <Route
+            path="/residents/:residentId"
+            element={<ResidentProfileRoute />}
+          />
           <Route
             path="/attendings"
             element={
@@ -166,7 +174,10 @@ function AuthenticatedApp() {
               />
             }
           />
-          <Route path="/attendings/:attendingId" element={<AttendingProfileRoute />} />
+          <Route
+            path="/attendings/:attendingId"
+            element={<AttendingProfileRoute />}
+          />
           <Route
             path="/attending-call-schedule"
             element={
@@ -197,17 +208,25 @@ function AuthenticatedApp() {
             path="/calendar-subscription"
             element={<CalendarSubscriptionPage />}
           />
-          <Route path="/backup-restore" element={<BackupRestorePage />} />
           <Route path="/invitations" element={<InvitesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/external-schedule" element={<ExternalScheduleSyncPage />} />
+          <Route
+            path="/external-schedule"
+            element={<ExternalScheduleSyncPage />}
+          />
           <Route path="/call-swaps" element={<CallSwapsPage />} />
-          <Route path="/scheduling-integrity" element={<ScheduleIntegrityPage />} />
+          <Route
+            path="/scheduling-integrity"
+            element={<ScheduleIntegrityPage />}
+          />
           <Route
             path="/consult-services/:serviceId"
             element={<ConsultProfileRoute />}
           />
-          <Route path="/vacation" element={<Navigate to="/block-schedule" replace />} />
+          <Route
+            path="/vacation"
+            element={<Navigate to="/block-schedule" replace />}
+          />
           <Route path="/login" element={<Navigate to="/whos-on" replace />} />
           <Route path="/" element={<Navigate to="/whos-on" replace />} />
           <Route path="*" element={<Navigate to="/whos-on" replace />} />

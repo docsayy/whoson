@@ -72,8 +72,28 @@ export default function SourceCallSchedulePage({
     setStart(value(add(new Date(`${start}T12:00:00`), n)));
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const date = value(add(new Date(`${start}T12:00:00`), index));
-    return days.find((day) => String(day.date) === date) || { date, entries: [] };
+    return (
+      days.find((day) => String(day.date) === date) || { date, entries: [] }
+    );
   });
+  const roles = Array.from(
+    new Map(
+      weekDays.flatMap((day) =>
+        ((day.entries as SourceRecord[]) || [])
+          .filter((entry) => ((entry.residents as SourceRecord[]) || []).length)
+          .map((entry) => {
+            const role = entry.role as SourceRecord;
+            return [
+              String(role.code || "Call"),
+              {
+                code: String(role.code || "Call"),
+                order: Number(role.sort_order || 999),
+              },
+            ] as const;
+          }),
+      ),
+    ).values(),
+  ).sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
   return (
     <Box>
       <Stack
@@ -128,88 +148,123 @@ export default function SourceCallSchedulePage({
           <CircularProgress />
         </Stack>
       ) : (
-        <Box sx={{ overflowX: "auto", pb: 0.5 }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(155px,1fr))", minWidth: 1085, gap: 0.6 }}>
-          {weekDays.map((day) => (
-            <Card
-              key={String(day.date)}
-              sx={{
-                p: 0.65,
-                border:
-                  String(day.date) === value(new Date())
-                    ? "2px solid #f59e0b"
-                    : undefined,
-                bgcolor:
-                  String(day.date) === value(new Date())
-                    ? "#fffdf5"
-                    : undefined,
-              }}
-            >
-              <Typography fontWeight={900} fontSize={12} sx={{ mb: 0.55, textAlign: "center" }}>
-                {new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Typography>
-              <Stack spacing={0.35}>
-                {((day.entries as SourceRecord[]) || [])
-                  .filter(
-                    (entry) =>
-                      ((entry.residents as SourceRecord[]) || []).length,
-                  )
-                  .map((entry, index) => (
-                    <Box
-                      key={index}
-                      sx={{
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 1,
-                        px: 0.45,
-                        py: 0.35,
-                        minWidth: 0,
+        <Card sx={{ overflowX: "auto" }}>
+          <Box
+            component="table"
+            sx={{
+              borderCollapse: "collapse",
+              width: "100%",
+              minWidth: 920,
+              tableLayout: "fixed",
+              "th,td": {
+                borderRight: "1px solid",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                px: 0.65,
+                py: 0.55,
+                verticalAlign: "middle",
+              },
+              th: { bgcolor: "#e2e8f0", fontWeight: 900, fontSize: 11.5 },
+              "th:first-of-type,td:first-of-type": {
+                width: 160,
+                position: "sticky",
+                left: 0,
+                zIndex: 2,
+                bgcolor: "#f8fafc",
+              },
+            }}
+          >
+            <thead>
+              <tr>
+                <th>Assignment</th>
+                {weekDays.map((day) => {
+                  const isToday = String(day.date) === value(new Date());
+                  return (
+                    <th
+                      key={String(day.date)}
+                      style={{
+                        background: isToday ? "#fcd898" : undefined,
+                        outline: isToday ? "2px solid #f59e0b" : undefined,
+                        outlineOffset: -2,
                       }}
                     >
-                      <Typography fontWeight={900} fontSize={10.5} noWrap>
-                        {String((entry.role as SourceRecord)?.code || "")}
-                      </Typography>
-                      <Stack spacing={0.15} sx={{ minWidth: 0 }}>
-                        {((entry.residents as SourceRecord[]) || []).map(
-                          (person, i) => {
-                            const name = String(person.name);
-                            const profile = findLinkedProfile(
-                              name,
-                              "resident",
-                              profiles,
-                              links,
-                            );
-                            return profile && onOpenResidentProfile ? (
-                              <Link
-                                key={i}
-                                component="button"
-                                onClick={() =>
-                                  onOpenResidentProfile(profile.id)
-                                }
-                                underline="hover"
-                                sx={{ fontSize: 10.5, fontWeight: 800, textAlign: "left" }}
-                              >
-                                {name}
-                              </Link>
-                            ) : (
-                              <Typography key={i} fontSize={10.5} noWrap>
-                                {name}
-                              </Typography>
-                            );
-                          },
+                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(
+                        "en-US",
+                        { weekday: "short", month: "short", day: "numeric" },
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {roles.map((role) => (
+                <tr key={role.code}>
+                  <td>
+                    <Typography fontWeight={900} fontSize={11.5}>
+                      {role.code}
+                    </Typography>
+                  </td>
+                  {weekDays.map((day) => {
+                    const entry = ((day.entries as SourceRecord[]) || []).find(
+                      (item) =>
+                        String((item.role as SourceRecord)?.code || "Call") ===
+                        role.code,
+                    );
+                    const people =
+                      (entry?.residents as SourceRecord[] | undefined) || [];
+                    const isToday = String(day.date) === value(new Date());
+                    return (
+                      <td
+                        key={String(day.date)}
+                        style={{ background: isToday ? "#fff8db" : undefined }}
+                      >
+                        {people.length ? (
+                          <Stack spacing={0.15}>
+                            {people.map((person, i) => {
+                              const name = String(person.name);
+                              const profile = findLinkedProfile(
+                                name,
+                                "resident",
+                                profiles,
+                                links,
+                              );
+                              return profile && onOpenResidentProfile ? (
+                                <Link
+                                  key={i}
+                                  component="button"
+                                  onClick={() =>
+                                    onOpenResidentProfile(profile.id)
+                                  }
+                                  underline="hover"
+                                  sx={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  {name}
+                                </Link>
+                              ) : (
+                                <Typography key={i} fontSize={11}>
+                                  {name}
+                                </Typography>
+                              );
+                            })}
+                          </Stack>
+                        ) : (
+                          <Typography fontSize={10.5} color="text.disabled">
+                            —
+                          </Typography>
                         )}
-                      </Stack>
-                    </Box>
-                  ))}
-              </Stack>
-            </Card>
-          ))}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
           </Box>
-        </Box>
+        </Card>
       )}
     </Box>
   );

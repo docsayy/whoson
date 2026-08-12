@@ -227,17 +227,17 @@ service cloud.firestore {
     }
 
     match /sourceCallDays/{id} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if false;
     }
 
     match /sourceServiceDays/{id} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if false;
     }
 
     match /sourceAttendingDays/{id} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if false;
     }
 
@@ -252,7 +252,7 @@ service cloud.firestore {
     }
 
     match /sourceSyncStatus/{id} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if false;
     }
 

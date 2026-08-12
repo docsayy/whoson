@@ -28,7 +28,10 @@ import { getResidents } from "../services/residentService";
 import { getAttendings } from "../services/attendingService";
 import type { Resident } from "../types/resident";
 import type { Attending } from "../types/attending";
-import { findLinkedProfile, type PersonProfile } from "../utils/sourceProfileMatching";
+import {
+  findLinkedProfile,
+  type PersonProfile,
+} from "../utils/sourceProfileMatching";
 import {
   getSourceProfileLinks,
   type SourcePersonType,
@@ -79,9 +82,9 @@ export default function SourceWhosOnPage({
       getSourceServiceDay(date, "inpatient"),
       getSourceServiceDay(date, "clinic"),
       getSourceAttendingCoverage(date, date),
-      getResidents(true),
-      getAttendings(true),
-      getSourceProfileLinks(),
+      userProfile ? getResidents(true) : Promise.resolve([]),
+      userProfile ? getAttendings(true) : Promise.resolve([]),
+      userProfile ? getSourceProfileLinks() : Promise.resolve([]),
     ]).then(
       ([
         calls,
@@ -107,9 +110,10 @@ export default function SourceWhosOnPage({
     void load()
       .catch(() => setError("Unable to load the cached daily schedule."))
       .finally(() => setLoading(false));
-  }, [date]);
+  }, [date, userProfile]);
   const personLink = (name: string, type: SourcePersonType) => {
-    const profiles: PersonProfile[] = type === "resident" ? residents : attendings;
+    const profiles: PersonProfile[] =
+      type === "resident" ? residents : attendings;
     const profile = findLinkedProfile(name, type, profiles, links);
     const open =
       type === "resident" ? onOpenResidentProfile : onOpenAttendingProfile;
@@ -158,11 +162,6 @@ export default function SourceWhosOnPage({
   const callEntries = ((call?.entries as SourceRecord[]) || []).filter(
     (item) => ((item.residents as SourceRecord[]) || []).length,
   );
-  const micuEntries = callEntries.filter((item) =>
-    /^(micu|icu)(\s+senior)?$/i.test(
-      String((item.role as SourceRecord)?.code || ""),
-    ),
-  );
   const services: Array<SourceRecord & { kind: string }> = [
     ...((inpatient?.entries as SourceRecord[] | undefined) || []).map(
       (item): SourceRecord & { kind: string } => ({
@@ -191,7 +190,11 @@ export default function SourceWhosOnPage({
           </Typography>
         </Box>
         <Stack direction="row" spacing={0.5} alignItems="center">
-          <IconButton size="small" onClick={() => setDate(moveDate(date, -1))} aria-label="Previous day">
+          <IconButton
+            size="small"
+            onClick={() => setDate(moveDate(date, -1))}
+            aria-label="Previous day"
+          >
             <ChevronLeftIcon />
           </IconButton>
           <TextField
@@ -200,7 +203,11 @@ export default function SourceWhosOnPage({
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
-          <IconButton size="small" onClick={() => setDate(moveDate(date, 1))} aria-label="Next day">
+          <IconButton
+            size="small"
+            onClick={() => setDate(moveDate(date, 1))}
+            aria-label="Next day"
+          >
             <ChevronRightIcon />
           </IconButton>
           <Button variant="outlined" onClick={() => setDate(today())}>
@@ -247,12 +254,12 @@ export default function SourceWhosOnPage({
                   );
                   const night = nightRole(role);
                   return (
-                    <Stack
+                    <Box
                       key={index}
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
                       sx={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(150px,42%) minmax(0,1fr)",
+                        alignItems: "center",
                         px: 0.65,
                         py: 0.28,
                         minHeight: 29,
@@ -262,7 +269,12 @@ export default function SourceWhosOnPage({
                         borderColor: night ? "#c7d2fe" : "#bbf7d0",
                       }}
                     >
-                      <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        alignItems="center"
+                        justifyContent="flex-end"
+                      >
                         <Typography fontWeight={900} fontSize={12}>
                           {role}
                         </Typography>
@@ -278,7 +290,12 @@ export default function SourceWhosOnPage({
                           }}
                         />
                       </Stack>
-                      <Stack direction="row" spacing={0.5}>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        justifyContent="flex-start"
+                        sx={{ pl: 1.5 }}
+                      >
                         {((item.residents as SourceRecord[]) || []).map(
                           (person, i) => (
                             <Box key={i}>
@@ -287,23 +304,13 @@ export default function SourceWhosOnPage({
                           ),
                         )}
                       </Stack>
-                    </Stack>
+                    </Box>
                   );
                 })}
               </Box>
             )}
             {tab === 1 && (
               <Stack spacing={0}>
-                {micuEntries.map((item, index) => {
-                  const role = String((item.role as SourceRecord)?.code || "ICU");
-                  const label = /^icu$/i.test(role) ? "MICU resident" : role.replace(/^ICU/i, "MICU");
-                  return (
-                    <Stack key={`micu-${index}`} direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.4, borderBottom: "1px solid", borderColor: "divider" }}>
-                      <Typography fontWeight={850} fontSize={12}>{label}</Typography>
-                      <Stack direction="row" spacing={0.5}>{((item.residents as SourceRecord[]) || []).map((person, i) => <Box key={i}>{personLink(String(person.name), "resident")}</Box>)}</Stack>
-                    </Stack>
-                  );
-                })}
                 {attending.map((item, index) => (
                   <Stack
                     key={String(item.id || index)}
@@ -334,19 +341,19 @@ export default function SourceWhosOnPage({
               <Stack spacing={0}>
                 {services.map((item, index) => {
                   const coverage = item.coverage as SourceRecord;
-                  const people = [
-                    coverage.attending
-                      ? (coverage.attending as SourceRecord)
-                      : null,
-                    ...((coverage.residents as SourceRecord[]) || []),
-                  ].filter(Boolean) as SourceRecord[];
+                  const serviceAttending = coverage.attending as
+                    SourceRecord | undefined;
+                  const serviceResidents =
+                    (coverage.residents as SourceRecord[]) || [];
                   return (
-                    <Stack
+                    <Box
                       key={index}
-                      direction={{ xs: "column", sm: "row" }}
-                      justifyContent="space-between"
                       sx={{
-                        py: 0.55,
+                        display: "grid",
+                        gridTemplateColumns: { xs: "1fr", sm: "28% 32% 40%" },
+                        alignItems: "center",
+                        columnGap: 1,
+                        py: 0.65,
                         borderBottom:
                           index < services.length - 1 ? "1px solid" : "none",
                         borderColor: "divider",
@@ -357,28 +364,39 @@ export default function SourceWhosOnPage({
                           (item.service as SourceRecord)?.name || "Service",
                         )}
                       </Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Typography fontSize={10} color="text.secondary">
+                          Attending
+                        </Typography>
+                        {serviceAttending ? (
+                          personLink(String(serviceAttending.name), "attending")
+                        ) : (
+                          <Typography fontSize={12}>—</Typography>
+                        )}
+                      </Stack>
                       <Stack
                         direction="row"
-                        spacing={0.8}
+                        spacing={0.6}
+                        alignItems="center"
                         flexWrap="wrap"
-                        justifyContent="flex-end"
                       >
-                        {people.map((person, i) => {
-                          const isAttending = Boolean(person.name);
-                          const name = isAttending
-                            ? String(person.name)
-                            : `${person.first_name} ${person.last_name}`;
-                          return (
+                        <Typography fontSize={10} color="text.secondary">
+                          Residents
+                        </Typography>
+                        {serviceResidents.length ? (
+                          serviceResidents.map((person, i) => (
                             <Box key={i}>
                               {personLink(
-                                name,
-                                isAttending ? "attending" : "resident",
+                                `${person.first_name} ${person.last_name}`,
+                                "resident",
                               )}
                             </Box>
-                          );
-                        })}
+                          ))
+                        ) : (
+                          <Typography fontSize={12}>—</Typography>
+                        )}
                       </Stack>
-                    </Stack>
+                    </Box>
                   );
                 })}
               </Stack>
