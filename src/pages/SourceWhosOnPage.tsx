@@ -39,6 +39,7 @@ import {
 import SourceProfileLinkDialog from "../components/SourceProfileLinkDialog";
 import { useAuth } from "../context/AuthContext";
 import { canManageResidents } from "../utils/permissions";
+import { compareSourceRoles, sourceRoleLabel } from "../utils/sourceCallRole";
 
 const today = () => {
   const d = new Date();
@@ -125,10 +126,10 @@ export default function SourceWhosOnPage({
             onClick={() => open(profile.id)}
             sx={{ fontSize: 12, fontWeight: 800, textAlign: "right" }}
           >
-            {name}
+            {profile.displayName}
           </Link>
         ) : (
-          <Typography fontSize={12}>{name}</Typography>
+          <Typography fontSize={12}>{profile.displayName}</Typography>
         )}
         {type === "attending" && profile.phone && (
           <Link
@@ -158,9 +159,14 @@ export default function SourceWhosOnPage({
       <Typography fontSize={12}>{name || "Unassigned"}</Typography>
     );
   };
-  const callEntries = ((call?.entries as SourceRecord[]) || []).filter(
-    (item) => ((item.residents as SourceRecord[]) || []).length,
-  );
+  const callEntries = ((call?.entries as SourceRecord[]) || [])
+    .filter((item) => ((item.residents as SourceRecord[]) || []).length)
+    .sort((a, b) =>
+      compareSourceRoles(
+        (a.role as SourceRecord) || {},
+        (b.role as SourceRecord) || {},
+      ),
+    );
   const services: Array<SourceRecord & { kind: string }> = [
     ...((inpatient?.entries as SourceRecord[] | undefined) || []).map(
       (item): SourceRecord & { kind: string } => ({
@@ -247,8 +253,8 @@ export default function SourceWhosOnPage({
                 }}
               >
                 {callEntries.map((item, index) => {
-                  const role = String(
-                    (item.role as SourceRecord)?.code || "Call",
+                  const role = sourceRoleLabel(
+                    (item.role as SourceRecord) || {},
                   );
                   const night = nightRole(role);
                   return (
@@ -256,7 +262,10 @@ export default function SourceWhosOnPage({
                       key={index}
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(150px,35%) minmax(0,1fr)",
+                        gridTemplateColumns: {
+                          xs: "minmax(130px,45%) minmax(0,1fr)",
+                          sm: "230px minmax(0,1fr)",
+                        },
                         alignItems: "center",
                         px: 0.65,
                         py: 0.28,
@@ -271,7 +280,7 @@ export default function SourceWhosOnPage({
                         direction="row"
                         spacing={0.5}
                         alignItems="center"
-                        justifyContent="flex-end"
+                        justifyContent="flex-start"
                       >
                         <Typography fontWeight={900} fontSize={12}>
                           {role}
@@ -292,7 +301,7 @@ export default function SourceWhosOnPage({
                         direction="row"
                         spacing={0.5}
                         justifyContent="flex-start"
-                        sx={{ pl: 1.5 }}
+                        sx={{ pl: 2 }}
                       >
                         {((item.residents as SourceRecord[]) || []).map(
                           (person, i) => (

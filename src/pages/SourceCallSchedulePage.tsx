@@ -23,6 +23,11 @@ import {
   getSourceProfileLinks,
   type SourceProfileLink,
 } from "../services/sourceProfileLinkService";
+import {
+  compareSourceRoles,
+  sourceRoleKey,
+  sourceRoleLabel,
+} from "../utils/sourceCallRole";
 
 const value = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -82,17 +87,11 @@ export default function SourceCallSchedulePage({
           .filter((entry) => ((entry.residents as SourceRecord[]) || []).length)
           .map((entry) => {
             const role = entry.role as SourceRecord;
-            return [
-              String(role.code || "Call"),
-              {
-                code: String(role.code || "Call"),
-                order: Number(role.sort_order ?? 999),
-              },
-            ] as const;
+            return [sourceRoleKey(role), role] as const;
           }),
       ),
     ).values(),
-  ).sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+  ).sort(compareSourceRoles);
   return (
     <Box>
       <Stack
@@ -197,17 +196,17 @@ export default function SourceCallSchedulePage({
             </thead>
             <tbody>
               {roles.map((role) => (
-                <tr key={role.code}>
+                <tr key={sourceRoleKey(role)}>
                   <td>
                     <Typography fontWeight={900} fontSize={11.5}>
-                      {role.code}
+                      {sourceRoleLabel(role)}
                     </Typography>
                   </td>
                   {weekDays.map((day) => {
                     const entry = ((day.entries as SourceRecord[]) || []).find(
                       (item) =>
-                        String((item.role as SourceRecord)?.code || "Call") ===
-                        role.code,
+                        sourceRoleKey((item.role as SourceRecord) || {}) ===
+                        sourceRoleKey(role),
                     );
                     const people =
                       (entry?.residents as SourceRecord[] | undefined) || [];
@@ -241,7 +240,7 @@ export default function SourceCallSchedulePage({
                                     textAlign: "left",
                                   }}
                                 >
-                                  {name}
+                                  {profile.displayName}
                                 </Link>
                               ) : (
                                 <Typography key={i} fontSize={11}>
