@@ -17,10 +17,19 @@ export function sourceRoleLabel(role: SourceRecord) {
 
   if (normalized === "icu") return "ICU intern";
   if (normalized === "nf") return "NF chief on call";
+  if (cohort === 2 && (normalized === "2n/tele/ccu" || normalized === "3w/4n"))
+    return `${code} senior`;
   if (cohort === 2 && normalized.startsWith("nf (")) {
     return `${code} senior`;
   }
   return code;
+}
+
+export function sourceRoleShiftLabel(role: SourceRecord) {
+  const normalized = normalize(role.code);
+  if (normalized === "chief resident") return "";
+  if (normalized === "icu" || normalized === "icu senior") return "24h";
+  return normalized === "nf" || normalized.startsWith("nf (") ? "Night" : "Day";
 }
 
 export function sourceRoleOrder(role: SourceRecord) {

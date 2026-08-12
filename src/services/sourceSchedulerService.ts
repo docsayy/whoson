@@ -28,18 +28,24 @@ export async function getSourceSyncStatus() {
 }
 
 export async function getSourceBlockSchedule() {
-  const snapshot = await getDoc(doc(db, "sourceScheduleCache", "blockSchedule"));
+  const snapshot = await getDoc(
+    doc(db, "sourceScheduleCache", "blockSchedule"),
+  );
   return snapshot.exists() ? (snapshot.data() as SourceRecord) : null;
 }
 
 export async function getSourceCallDays(start: string, end: string) {
-  const snapshot = await getDocs(query(
-    collection(db, "sourceCallDays"),
-    where("date", ">=", start),
-    where("date", "<=", end),
-    orderBy("date", "asc")
-  ));
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SourceRecord));
+  const snapshot = await getDocs(
+    query(
+      collection(db, "sourceCallDays"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+      orderBy("date", "asc"),
+    ),
+  );
+  return snapshot.docs.map(
+    (item) => ({ id: item.id, ...item.data() }) as SourceRecord,
+  );
 }
 
 export async function getSourceCallDay(date: string) {
@@ -47,27 +53,54 @@ export async function getSourceCallDay(date: string) {
   return snapshot.exists() ? (snapshot.data() as SourceRecord) : null;
 }
 
-export async function getSourceServiceDay(date: string, kind: "inpatient" | "clinic") {
-  const snapshot = await getDoc(doc(db, "sourceServiceDays", `${kind}_${date}`));
+export async function getSourceServiceDay(
+  date: string,
+  kind: "inpatient" | "clinic",
+) {
+  const snapshot = await getDoc(
+    doc(db, "sourceServiceDays", `${kind}_${date}`),
+  );
   return snapshot.exists() ? (snapshot.data() as SourceRecord) : null;
 }
 
+export async function getSourceServiceDays(start: string, end: string) {
+  const snapshot = await getDocs(
+    query(
+      collection(db, "sourceServiceDays"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+      orderBy("date", "asc"),
+    ),
+  );
+  return snapshot.docs.map(
+    (item) => ({ id: item.id, ...item.data() }) as SourceRecord,
+  );
+}
+
 export async function getSourceAttendingCoverage(start: string, end: string) {
-  const snapshot = await getDocs(query(
-    collection(db, "sourceAttendingDays"),
-    where("date", ">=", start),
-    where("date", "<=", end),
-    orderBy("date", "asc")
-  ));
-  return snapshot.docs.flatMap((item) => (item.data().items as SourceRecord[] | undefined) || []);
+  const snapshot = await getDocs(
+    query(
+      collection(db, "sourceAttendingDays"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+      orderBy("date", "asc"),
+    ),
+  );
+  return snapshot.docs.flatMap(
+    (item) => (item.data().items as SourceRecord[] | undefined) || [],
+  );
 }
 
 export async function getSourceLectures(start: string, end: string) {
-  const snapshot = await getDocs(query(
-    collection(db, "sourceLectureDays"),
-    where("date", ">=", start),
-    where("date", "<=", end),
-    orderBy("date", "asc")
-  ));
-  return snapshot.docs.flatMap((item) => (item.data().items as SourceRecord[] | undefined) || []);
+  const snapshot = await getDocs(
+    query(
+      collection(db, "sourceLectureDays"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+      orderBy("date", "asc"),
+    ),
+  );
+  return snapshot.docs.flatMap(
+    (item) => (item.data().items as SourceRecord[] | undefined) || [],
+  );
 }

@@ -39,7 +39,11 @@ import {
 import SourceProfileLinkDialog from "../components/SourceProfileLinkDialog";
 import { useAuth } from "../context/AuthContext";
 import { canManageResidents } from "../utils/permissions";
-import { compareSourceRoles, sourceRoleLabel } from "../utils/sourceCallRole";
+import {
+  compareSourceRoles,
+  sourceRoleLabel,
+  sourceRoleShiftLabel,
+} from "../utils/sourceCallRole";
 
 const today = () => {
   const d = new Date();
@@ -50,7 +54,6 @@ const moveDate = (date: string, days: number) => {
   next.setDate(next.getDate() + days);
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 };
-const nightRole = (role: string) => /\bnf\b|night/i.test(role);
 export default function SourceWhosOnPage({
   onOpenResidentProfile,
   onOpenAttendingProfile,
@@ -253,18 +256,18 @@ export default function SourceWhosOnPage({
                 }}
               >
                 {callEntries.map((item, index) => {
-                  const role = sourceRoleLabel(
-                    (item.role as SourceRecord) || {},
-                  );
-                  const night = nightRole(role);
+                  const sourceRole = (item.role as SourceRecord) || {};
+                  const role = sourceRoleLabel(sourceRole);
+                  const shiftLabel = sourceRoleShiftLabel(sourceRole);
+                  const night = shiftLabel === "Night";
                   return (
                     <Box
                       key={index}
                       sx={{
                         display: "grid",
                         gridTemplateColumns: {
-                          xs: "minmax(130px,45%) minmax(0,1fr)",
-                          sm: "230px minmax(0,1fr)",
+                          xs: "minmax(125px,44%) 48px minmax(0,1fr)",
+                          sm: "230px 58px minmax(0,1fr)",
                         },
                         alignItems: "center",
                         px: 0.65,
@@ -276,32 +279,35 @@ export default function SourceWhosOnPage({
                         borderColor: night ? "#c7d2fe" : "#bbf7d0",
                       }}
                     >
-                      <Stack
-                        direction="row"
-                        spacing={0.5}
-                        alignItems="center"
-                        justifyContent="flex-start"
-                      >
+                      <Stack direction="row" alignItems="center">
                         <Typography fontWeight={900} fontSize={12}>
                           {role}
                         </Typography>
-                        <Chip
-                          label={night ? "Night" : "Day"}
-                          size="small"
-                          sx={{
-                            height: 17,
-                            fontSize: 9,
-                            fontWeight: 900,
-                            bgcolor: night ? "#4338ca" : "#15803d",
-                            color: "white",
-                          }}
-                        />
                       </Stack>
+                      <Box>
+                        {shiftLabel && (
+                          <Chip
+                            label={shiftLabel}
+                            size="small"
+                            sx={{
+                              height: 17,
+                              fontSize: 9,
+                              fontWeight: 900,
+                              bgcolor: night
+                                ? "#4338ca"
+                                : shiftLabel === "24h"
+                                  ? "#475569"
+                                  : "#15803d",
+                              color: "white",
+                            }}
+                          />
+                        )}
+                      </Box>
                       <Stack
                         direction="row"
                         spacing={0.5}
                         justifyContent="flex-start"
-                        sx={{ pl: 2 }}
+                        sx={{ pl: 1 }}
                       >
                         {((item.residents as SourceRecord[]) || []).map(
                           (person, i) => (
@@ -391,12 +397,20 @@ export default function SourceWhosOnPage({
                       >
                         {serviceResidents.length ? (
                           serviceResidents.map((person, i) => (
-                            <Box key={i}>
+                            <Stack
+                              key={i}
+                              direction="row"
+                              spacing={0.6}
+                              alignItems="center"
+                            >
                               {personLink(
                                 `${person.first_name} ${person.last_name}`,
                                 "resident",
                               )}
-                            </Box>
+                              {i < serviceResidents.length - 1 && (
+                                <Typography fontSize={12}>,</Typography>
+                              )}
+                            </Stack>
                           ))
                         ) : (
                           <Typography fontSize={12}>—</Typography>

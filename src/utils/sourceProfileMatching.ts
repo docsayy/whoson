@@ -1,6 +1,10 @@
 import type { Attending } from "../types/attending";
 import type { Resident } from "../types/resident";
-import { sourceNameKey, type SourcePersonType, type SourceProfileLink } from "../services/sourceProfileLinkService";
+import {
+  sourceNameKey,
+  type SourcePersonType,
+  type SourceProfileLink,
+} from "../services/sourceProfileLinkService";
 
 export type PersonProfile = Resident | Attending;
 
@@ -8,8 +12,15 @@ function clean(value: string) {
   return value
     .toLowerCase()
     .replace(/\b(dr|md|do)\b/g, " ")
+    .replace(/\(\d+\)/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function tokens(value: string) {
+  return clean(value)
+    .split(" ")
+    .filter((part) => part.length >= 3);
 }
 
 function sourceParts(value: string) {
@@ -22,7 +33,10 @@ function sourceParts(value: string) {
   return { first: parts[0] || "", last: parts.slice(1).join(" ") };
 }
 
-export function findProfile<T extends PersonProfile>(sourceName: string, profiles: T[]) {
+export function findProfile<T extends PersonProfile>(
+  sourceName: string,
+  profiles: T[],
+) {
   const source = sourceParts(sourceName);
   if (!source.last) return undefined;
   return profiles.find((profile) => {
@@ -30,12 +44,40 @@ export function findProfile<T extends PersonProfile>(sourceName: string, profile
     const last = clean(profile.lastName);
     const display = clean(profile.displayName);
     const direct = clean(sourceName);
-    const firstMatches = !source.first || first === source.first || first.startsWith(source.first) || source.first.startsWith(first.slice(0, 1));
+    const firstMatches =
+      !source.first ||
+      first === source.first ||
+      first.startsWith(source.first) ||
+      source.first.startsWith(first.slice(0, 1));
     return (last === source.last && firstMatches) || display === direct;
   });
 }
 
-export function findLinkedProfile<T extends PersonProfile>(sourceName: string, personType: SourcePersonType, profiles: T[], links: SourceProfileLink[]) {
-  const saved = links.find(link => link.personType === personType && sourceNameKey(link.sourceName) === sourceNameKey(sourceName));
-  return (saved ? profiles.find(profile => profile.id === saved.profileId) : undefined) || findProfile(sourceName, profiles);
+export function findLinkedProfile<T extends PersonProfile>(
+  sourceName: string,
+  personType: SourcePersonType,
+  profiles: T[],
+  links: SourceProfileLink[],
+) {
+  const saved = links.find(
+    (link) =>
+      link.personType === personType &&
+      sourceNameKey(link.sourceName) === sourceNameKey(sourceName),
+  );
+  if (saved) return profiles.find((profile) => profile.id === saved.profileId);
+  const direct = findProfile(sourceName, profiles);
+  if (direct) return direct;
+  const incoming = tokens(sourceName);
+  const aliasProfileIds = new Set(
+    links
+      .filter(
+        (link) =>
+          link.personType === personType &&
+          tokens(link.sourceName).some((part) => incoming.includes(part)),
+      )
+      .map((link) => link.profileId),
+  );
+  return aliasProfileIds.size === 1
+    ? profiles.find((profile) => aliasProfileIds.has(profile.id))
+    : undefined;
 }

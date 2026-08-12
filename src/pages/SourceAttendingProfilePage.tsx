@@ -16,12 +16,16 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { getAttendings } from "../services/attendingService";
 import {
   getSourceAttendingCoverage,
+  getSourceServiceDays,
   getSourceSyncStatus,
   type SourceRecord,
 } from "../services/sourceSchedulerService";
 import type { Attending } from "../types/attending";
 import { findLinkedProfile } from "../utils/sourceProfileMatching";
-import { getSourceProfileLinks, type SourceProfileLink } from "../services/sourceProfileLinkService";
+import {
+  getSourceProfileLinks,
+  type SourceProfileLink,
+} from "../services/sourceProfileLinkService";
 const value = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const monthValue = (d: Date) => value(d).slice(0, 7);
@@ -43,13 +47,38 @@ export default function SourceAttendingProfilePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
-    void Promise.all([getAttendings(), getSourceSyncStatus(), getSourceProfileLinks()])
+    void Promise.all([
+      getAttendings(),
+      getSourceSyncStatus(),
+      getSourceProfileLinks(),
+    ])
       .then(async ([people, status, savedLinks]) => {
         const found = people.find((item) => item.id === attendingId) || null;
         setPerson(found);
         setLinks(savedLinks);
-        if (status?.start && status?.end)
-          setItems(await getSourceAttendingCoverage(status.start, status.end));
+        if (status?.start && status?.end) {
+          const [calls, serviceDays] = await Promise.all([
+            getSourceAttendingCoverage(status.start, status.end),
+            getSourceServiceDays(status.start, status.end),
+          ]);
+          const serviceCoverage = serviceDays.flatMap((day) =>
+            ((day.entries as SourceRecord[]) || []).flatMap((entry) => {
+              const coverage = entry.coverage as SourceRecord | undefined;
+              const attending = coverage?.attending as SourceRecord | undefined;
+              return attending
+                ? [
+                    {
+                      attending_name: attending.name,
+                      start_date: day.date,
+                      end_date: day.date,
+                      label: (entry.service as SourceRecord)?.name || "Service",
+                    },
+                  ]
+                : [];
+            }),
+          );
+          setItems([...calls, ...serviceCoverage]);
+        }
       })
       .catch(() =>
         setError("Unable to load this attending's synchronized schedule."),
@@ -60,7 +89,12 @@ export default function SourceAttendingProfilePage({
     () =>
       person
         ? items.filter((item) =>
-            findLinkedProfile(String(item.attending_name || ""), "attending", [person], links),
+            findLinkedProfile(
+              String(item.attending_name || ""),
+              "attending",
+              [person],
+              links,
+            ),
           )
         : [],
     [items, links, person],
@@ -109,9 +143,7 @@ export default function SourceAttendingProfilePage({
         <Typography variant="h4" fontWeight={900}>
           {person.displayName}
         </Typography>
-        <Typography color="text.secondary">
-          {person.specialty} · Firestore profile linked to Source Scheduler
-        </Typography>
+        <Typography color="text.secondary">{person.specialty}</Typography>
       </Card>
       {error && <Alert severity="error">{error}</Alert>}
       <Card sx={{ p: 1.2 }}>

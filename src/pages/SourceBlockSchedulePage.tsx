@@ -6,6 +6,8 @@ import {
   Link,
   MenuItem,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
@@ -36,6 +38,7 @@ export default function SourceBlockSchedulePage({
   const [profiles, setProfiles] = useState<Resident[]>([]);
   const [links, setLinks] = useState<SourceProfileLink[]>([]);
   const [selectedYear, setSelectedYear] = useState("");
+  const [selectedPgy, setSelectedPgy] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -79,6 +82,46 @@ export default function SourceBlockSchedulePage({
       rotationMap: new Map(rotations.map((item) => [String(item.id), item])),
     };
   }, [data, selectedYear]);
+  const residentRows = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        key: string;
+        name: string;
+        pgy?: string;
+        profile?: Resident;
+        sources: SourceRecord[];
+      }
+    >();
+    model.residents
+      .filter((resident) => resident.is_active !== false)
+      .forEach((resident) => {
+        const sourceName = `${resident.first_name} ${resident.last_name}`;
+        const profile = findLinkedProfile(
+          sourceName,
+          "resident",
+          profiles,
+          links,
+        );
+        const key = profile ? `profile:${profile.id}` : `source:${resident.id}`;
+        const existing = grouped.get(key);
+        if (existing) existing.sources.push(resident);
+        else
+          grouped.set(key, {
+            key,
+            name:
+              profile?.displayName || sourceName.replace(/\s*\(\d+\)\s*$/, ""),
+            pgy:
+              profile?.pgy ||
+              (resident.cohort_id ? `PGY-${resident.cohort_id}` : undefined),
+            profile,
+            sources: [resident],
+          });
+      });
+    return [...grouped.values()].filter(
+      (row) => selectedPgy === "all" || row.pgy === selectedPgy,
+    );
+  }, [links, model.residents, profiles, selectedPgy]);
   return (
     <Box>
       <Stack
@@ -111,6 +154,16 @@ export default function SourceBlockSchedulePage({
           ))}
         </TextField>
       </Stack>
+      <Tabs
+        value={selectedPgy}
+        onChange={(_, value) => setSelectedPgy(value)}
+        sx={{ mb: 1, minHeight: 38, "& .MuiTab-root": { minHeight: 38 } }}
+      >
+        <Tab value="all" label="All residents" />
+        <Tab value="PGY-1" label="PGY-1" />
+        <Tab value="PGY-2" label="PGY-2" />
+        <Tab value="PGY-3" label="PGY-3" />
+      </Tabs>
       {error && <Alert severity="error">{error}</Alert>}
       {loading ? (
         <Stack alignItems="center" sx={{ py: 8 }}>
@@ -173,59 +226,54 @@ export default function SourceBlockSchedulePage({
               </tr>
             </thead>
             <tbody>
-              {model.residents
-                .filter((resident) => resident.is_active !== false)
-                .map((resident) => {
-                  const name = `${resident.first_name} ${resident.last_name}`;
-                  const profile = findLinkedProfile(
-                    name,
-                    "resident",
-                    profiles,
-                    links,
-                  );
-                  return (
-                    <tr key={String(resident.id)}>
-                      <td>
-                        {profile && onOpenResidentProfile ? (
-                          <Link
-                            component="button"
-                            underline="hover"
-                            onClick={() => onOpenResidentProfile(profile.id)}
-                            sx={{
-                              fontWeight: 900,
-                              fontSize: 12,
-                              textAlign: "left",
-                            }}
-                          >
-                            {name}
-                          </Link>
-                        ) : (
-                          <strong>{name}</strong>
-                        )}
-                      </td>
-                      {model.blocks.map((block) => {
-                        const rotationId =
-                          model.assignments[`${resident.id}:${block.id}`];
-                        const rotation = model.rotationMap.get(
-                          String(rotationId),
-                        );
-                        return (
-                          <td
-                            key={String(block.id)}
-                            style={{
-                              background: String(
-                                rotation?.color || "transparent",
-                              ),
-                              fontWeight: 700,
-                            }}
-                          >
-                            {rotation ? String(rotation.code) : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+              {residentRows.map((row) => {
+                return (
+                  <tr key={row.key}>
+                    <td>
+                      {row.profile && onOpenResidentProfile ? (
+                        <Link
+                          component="button"
+                          underline="hover"
+                          onClick={() => onOpenResidentProfile(row.profile!.id)}
+                          sx={{
+                            fontWeight: 900,
+                            fontSize: 12,
+                            textAlign: "left",
+                          }}
+                        >
+                          {row.name}
+                        </Link>
+                      ) : (
+                        <strong>{row.name}</strong>
+                      )}
+                    </td>
+                    {model.blocks.map((block) => {
+                      const rotationId = row.sources
+                        .map(
+                          (resident) =>
+                            model.assignments[`${resident.id}:${block.id}`],
+                        )
+                        .find(Boolean);
+                      const rotation = model.rotationMap.get(
+                        String(rotationId),
+                      );
+                      return (
+                        <td
+                          key={String(block.id)}
+                          style={{
+                            background: String(
+                              rotation?.color || "transparent",
+                            ),
+                            fontWeight: 700,
+                          }}
+                        >
+                          {rotation ? String(rotation.code) : "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </Box>
         </Box>
