@@ -256,6 +256,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Explicit admin-created associations between Source Scheduler names and
+    // existing WhosOn resident/attending profiles.
+    match /sourceProfileLinks/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
     match /hospitalHolidays/{id} {
       allow read: if signedIn();
       allow write: if isManager();

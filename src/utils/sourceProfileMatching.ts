@@ -1,5 +1,6 @@
 import type { Attending } from "../types/attending";
 import type { Resident } from "../types/resident";
+import { sourceNameKey, type SourcePersonType, type SourceProfileLink } from "../services/sourceProfileLinkService";
 
 export type PersonProfile = Resident | Attending;
 
@@ -32,4 +33,9 @@ export function findProfile<T extends PersonProfile>(sourceName: string, profile
     const firstMatches = !source.first || first === source.first || first.startsWith(source.first) || source.first.startsWith(first.slice(0, 1));
     return (last === source.last && firstMatches) || display === direct;
   });
+}
+
+export function findLinkedProfile<T extends PersonProfile>(sourceName: string, personType: SourcePersonType, profiles: T[], links: SourceProfileLink[]) {
+  const saved = links.find(link => link.personType === personType && sourceNameKey(link.sourceName) === sourceNameKey(sourceName));
+  return (saved ? profiles.find(profile => profile.id === saved.profileId) : undefined) || findProfile(sourceName, profiles);
 }
