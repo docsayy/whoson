@@ -6,6 +6,7 @@ import {
   Card,
   Chip,
   CircularProgress,
+  IconButton,
   Link,
   Stack,
   Tab,
@@ -14,6 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 import PhoneIcon from "@mui/icons-material/Phone";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import SourceSyncBanner from "../components/SourceSyncBanner";
 import {
   getSourceAttendingCoverage,
@@ -38,6 +41,11 @@ import { canManageResidents } from "../utils/permissions";
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const moveDate = (date: string, days: number) => {
+  const next = new Date(`${date}T12:00:00`);
+  next.setDate(next.getDate() + days);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 };
 const nightRole = (role: string) => /\bnf\b|night/i.test(role);
 export default function SourceWhosOnPage({
@@ -150,6 +158,11 @@ export default function SourceWhosOnPage({
   const callEntries = ((call?.entries as SourceRecord[]) || []).filter(
     (item) => ((item.residents as SourceRecord[]) || []).length,
   );
+  const micuEntries = callEntries.filter((item) =>
+    /^(micu|icu)(\s+senior)?$/i.test(
+      String((item.role as SourceRecord)?.code || ""),
+    ),
+  );
   const services: Array<SourceRecord & { kind: string }> = [
     ...((inpatient?.entries as SourceRecord[] | undefined) || []).map(
       (item): SourceRecord & { kind: string } => ({
@@ -177,13 +190,19 @@ export default function SourceWhosOnPage({
             Compact daily coverage from Source Scheduler.
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <IconButton size="small" onClick={() => setDate(moveDate(date, -1))} aria-label="Previous day">
+            <ChevronLeftIcon />
+          </IconButton>
           <TextField
             size="small"
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
+          <IconButton size="small" onClick={() => setDate(moveDate(date, 1))} aria-label="Next day">
+            <ChevronRightIcon />
+          </IconButton>
           <Button variant="outlined" onClick={() => setDate(today())}>
             Today
           </Button>
@@ -218,11 +237,8 @@ export default function SourceWhosOnPage({
               <Box
                 sx={{
                   display: "grid",
-                  gridTemplateColumns: {
-                    xs: "1fr",
-                    md: "repeat(2,minmax(0,1fr))",
-                  },
-                  gap: 0.35,
+                  gridTemplateColumns: "minmax(0,1fr)",
+                  gap: 0.25,
                 }}
               >
                 {callEntries.map((item, index) => {
@@ -238,8 +254,8 @@ export default function SourceWhosOnPage({
                       alignItems="center"
                       sx={{
                         px: 0.65,
-                        py: 0.4,
-                        minHeight: 32,
+                        py: 0.28,
+                        minHeight: 29,
                         borderRadius: 1.2,
                         bgcolor: night ? "#eef2ff" : "#ecfdf5",
                         border: "1px solid",
@@ -278,6 +294,16 @@ export default function SourceWhosOnPage({
             )}
             {tab === 1 && (
               <Stack spacing={0}>
+                {micuEntries.map((item, index) => {
+                  const role = String((item.role as SourceRecord)?.code || "ICU");
+                  const label = /^icu$/i.test(role) ? "MICU resident" : role.replace(/^ICU/i, "MICU");
+                  return (
+                    <Stack key={`micu-${index}`} direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.4, borderBottom: "1px solid", borderColor: "divider" }}>
+                      <Typography fontWeight={850} fontSize={12}>{label}</Typography>
+                      <Stack direction="row" spacing={0.5}>{((item.residents as SourceRecord[]) || []).map((person, i) => <Box key={i}>{personLink(String(person.name), "resident")}</Box>)}</Stack>
+                    </Stack>
+                  );
+                })}
                 {attending.map((item, index) => (
                   <Stack
                     key={String(item.id || index)}
@@ -285,7 +311,7 @@ export default function SourceWhosOnPage({
                     justifyContent="space-between"
                     alignItems="center"
                     sx={{
-                      py: 0.55,
+                      py: 0.4,
                       borderBottom:
                         index < attending.length - 1 ? "1px solid" : "none",
                       borderColor: "divider",
