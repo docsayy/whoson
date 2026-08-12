@@ -87,10 +87,11 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   },
   { label: "Coverage Rules", page: "coverage-rules", icon: <MenuBookIcon /> },
   {
-    label: "External Schedule Source",
+    label: "External Schedule",
     page: "external-sync",
     icon: <SyncAltIcon />,
     managerOnly: true,
+    requiredForManagers: true,
   },
   {
     label: "Settings",
@@ -110,7 +111,7 @@ export function getNavItem(page: AppPage): NavItem | undefined {
 
 export function createDefaultSidebarSettings(): SidebarSettings {
   return {
-    version: 3,
+    version: 4,
     items: DEFAULT_NAV_ITEMS.map((item) => ({
       page: item.page,
       visibleToStandardUsers: !item.managerOnly,
@@ -197,7 +198,7 @@ export function normalizeSidebarSettings(
   }
 
   return {
-    version: 3,
+    version: 4,
     items,
     theme: normalizeTheme(input?.theme),
   };
