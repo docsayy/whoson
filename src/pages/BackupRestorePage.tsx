@@ -56,7 +56,6 @@ const BACKUP_COLLECTIONS = [
   "attendingScheduleAssignments",
   "services",
   "calendarSubscriptions",
-  "notifications",
   "callSwapRequests",
   "lectureEvents",
   "hospitalHolidays",

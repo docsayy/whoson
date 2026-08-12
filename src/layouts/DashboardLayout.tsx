@@ -20,7 +20,6 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 
 import { getNavItem, normalizeSidebarSettings } from "../config/navigation";
-import NotificationCenter from "../components/NotificationCenter";
 import { useAuth } from "../context/AuthContext";
 import { useSidebarSettings } from "../hooks/useSidebarSettings";
 import type { AppPage } from "../types/page";
@@ -160,7 +159,6 @@ export default function DashboardLayout({
           </Stack>
 
           <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-            <NotificationCenter uid={user?.uid} residentId={profile?.residentId} onNavigate={handleNavigate} />
             <Box sx={{ textAlign: "right", display: { xs: "none", sm: "block" } }}>
               <Typography fontSize={11.25} fontWeight={700} noWrap>
                 {profile?.displayName || user?.email}

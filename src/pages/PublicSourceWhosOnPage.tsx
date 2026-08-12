@@ -23,14 +23,9 @@ export default function PublicSourceWhosOnPage() {
             alignItems="center"
             sx={{ width: "100%" }}
           >
-            <Box>
-              <Typography fontWeight={900} fontSize={22}>
-                WhosOn
-              </Typography>
-              <Typography color="text.secondary" fontSize={11.5}>
-                Live Source Scheduler coverage
-              </Typography>
-            </Box>
+            <Typography fontWeight={900} fontSize={22}>
+              WhosOn
+            </Typography>
             <Button
               variant="contained"
               startIcon={<LoginIcon />}

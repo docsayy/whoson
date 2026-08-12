@@ -25,12 +25,6 @@ function tokens(value: string) {
 
 function sourceParts(value: string) {
   const withoutTitle = value.replace(/\b(dr\.?|md|do)\b/gi, "").trim();
-  const compactAlias = withoutTitle.match(/^([A-Z][a-z]+)([A-Z])$/);
-  if (compactAlias)
-    return {
-      first: compactAlias[2].toLowerCase(),
-      last: compactAlias[1].toLowerCase(),
-    };
   if (withoutTitle.includes(",")) {
     const [last, first = ""] = withoutTitle.split(",");
     return { first: clean(first), last: clean(last) };

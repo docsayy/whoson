@@ -219,6 +219,11 @@ export default function SourceResidentProfilePage({
                 const items = model.personalCalls.filter(
                   (item) => item.date === day.date,
                 );
+                const blockRotation = model.rows.find(
+                  ({ block }) =>
+                    String(block.start_date) <= day.date &&
+                    String(block.end_date) >= day.date,
+                )?.rotation;
                 const isToday = day.date === value(new Date());
                 return (
                   <Box
@@ -242,6 +247,20 @@ export default function SourceResidentProfilePage({
                     <Typography fontWeight={900} fontSize={11}>
                       {Number(day.date.slice(-2))}
                     </Typography>
+                    {blockRotation && (
+                      <Chip
+                        label={`Rotation: ${String(blockRotation.code)}`}
+                        size="small"
+                        sx={{
+                          mt: 0.3,
+                          mr: 0.3,
+                          height: 20,
+                          fontSize: 9.5,
+                          fontWeight: 900,
+                          bgcolor: String(blockRotation.color || "grey.200"),
+                        }}
+                      />
+                    )}
                     {items.map((item, i) => (
                       <Chip
                         key={i}

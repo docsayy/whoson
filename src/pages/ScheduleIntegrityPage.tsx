@@ -16,7 +16,6 @@ import EventBusyIcon from "@mui/icons-material/EventBusy";
 import HotelIcon from "@mui/icons-material/Hotel";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import NightlightIcon from "@mui/icons-material/Nightlight";
-import NotificationsIcon from "@mui/icons-material/Notifications";
 import PublishedWithChangesIcon from "@mui/icons-material/PublishedWithChanges";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { useNavigate } from "react-router-dom";
@@ -28,7 +27,6 @@ import { useAttendingSchedule } from "../hooks/useAttendingSchedule";
 import { useBlockAssignments } from "../hooks/useBlockAssignments";
 import { useCallSwaps } from "../hooks/useCallSwaps";
 import { useMonthlyScheduleRange } from "../hooks/useMonthlyScheduleRange";
-import { useNotifications } from "../hooks/useNotifications";
 import { useResidents } from "../hooks/useResidents";
 import { useRotations } from "../hooks/useRotations";
 import { useServices } from "../hooks/useServices";
@@ -71,7 +69,7 @@ const CORE_ATTENDING_SERVICE_IDS = [
 
 export default function ScheduleIntegrityPage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const manager = canBuildSchedule(profile?.role);
   const current = new Date();
   const currentMonthId = monthId(current);
@@ -85,7 +83,6 @@ export default function ScheduleIntegrityPage() {
   const { assignments: attendingAssignments, loading: attendingLoading } = useAttendingSchedule();
   const { services, loading: servicesLoading } = useServices();
   const { requests, loading: swapsLoading } = useCallSwaps();
-  const { unreadCount } = useNotifications(user?.uid, profile?.residentId);
   const diagnostics = useDataAccessDiagnostics();
   const {
     assignments: monthlyAssignments,
@@ -255,13 +252,6 @@ export default function ScheduleIntegrityPage() {
       value: pendingSwaps,
       icon: <SwapHorizIcon />,
       color: "#0369a1",
-      path: "/call-swaps",
-    },
-    {
-      label: "Unread notifications",
-      value: unreadCount,
-      icon: <NotificationsIcon />,
-      color: "#15803d",
       path: "/call-swaps",
     },
   ];

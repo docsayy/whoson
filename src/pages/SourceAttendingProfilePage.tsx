@@ -152,7 +152,8 @@ export default function SourceAttendingProfilePage({
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Box>
             <Typography variant="h4" fontWeight={900}>
-              {person.displayName}
+              {[person.firstName, person.lastName].filter(Boolean).join(" ") ||
+                person.displayName}
             </Typography>
             <Typography color="text.secondary">{person.specialty}</Typography>
           </Box>

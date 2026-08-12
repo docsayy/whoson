@@ -58,7 +58,6 @@ import {
   residentTraining,
 } from "../utils/nightFloatSchedule";
 import { canBuildSchedule } from "../utils/permissions";
-import { notifyAllActiveUsers, notifyResident } from "../services/notificationService";
 import { ruleIssueSummary, validateCallAssignment } from "../utils/scheduleRules";
 import {
   detectDailyScheduleIssues,
@@ -319,8 +318,6 @@ export default function MonthlyScheduleMatrixPage({
     }
 
     const timing = getServiceTimingForDate(data.service, data.date);
-    const previous = getCell(data.date, data.service);
-
     await updateCell({
       date: data.date,
       serviceId: data.service.id,
@@ -334,51 +331,12 @@ export default function MonthlyScheduleMatrixPage({
       endTime: timing.endTime,
       notes: data.notes.trim(),
     });
-    try {
-      if (previous && previous.residentId !== resident.id) {
-        await notifyResident({
-          residentId: previous.residentId,
-          type: "assignment-changed",
-          title: "Call assignment changed",
-          message: `${data.service.name} on ${data.date} was reassigned from you to ${resident.displayName}.`,
-          linkPage: "schedule",
-          relatedId: `${data.date}_${data.service.id}`,
-        });
-      }
-      if (!previous || previous.residentId !== resident.id) {
-        await notifyResident({
-          residentId: resident.id,
-          type: "assignment-changed",
-          title: "New call assignment",
-          message: `${data.service.name} on ${data.date} was assigned to you in Draft. It becomes visible after publication.`,
-          linkPage: "schedule",
-          relatedId: `${data.date}_${data.service.id}`,
-        });
-      }
-    } catch (notificationError) {
-      console.warn("Assignment saved, but notification could not be created.", notificationError);
-    }
     setActionError("");
     setEditingCell(null);
   }
 
   async function handleRemoveCell(date: string, service: ScheduleService) {
-    const previous = getCell(date, service);
     await removeCell(date, service.id);
-    if (previous) {
-      try {
-        await notifyResident({
-          residentId: previous.residentId,
-          type: "assignment-changed",
-          title: "Call assignment removed",
-          message: `${service.name} on ${date} was removed from your draft schedule.`,
-          linkPage: "schedule",
-          relatedId: `${date}_${service.id}`,
-        });
-      } catch (notificationError) {
-        console.warn("Assignment removed, but notification could not be created.", notificationError);
-      }
-    }
   }
 
   async function handleImport(file: File) {
@@ -406,38 +364,6 @@ export default function MonthlyScheduleMatrixPage({
     );
 
     await importCells(cells, replaceDifferent);
-    try {
-      await Promise.all(
-        chosenRows.flatMap((row) => {
-          if (!row.cell) return [];
-          const notifications = [
-            notifyResident({
-              residentId: row.cell.residentId,
-              type: "assignment-changed",
-              title: row.action === "replacement" ? "Call assignment replaced" : "Call assignment imported",
-              message: `${row.cell.serviceName} on ${row.cell.date} was added to your draft schedule.`,
-              linkPage: "schedule",
-              relatedId: `${row.cell.date}_${row.cell.serviceId}`,
-            }),
-          ];
-          if (row.existingCell && row.existingCell.residentId !== row.cell.residentId) {
-            notifications.push(
-              notifyResident({
-                residentId: row.existingCell.residentId,
-                type: "assignment-changed",
-                title: "Call assignment changed",
-                message: `${row.cell.serviceName} on ${row.cell.date} was reassigned from you to ${row.cell.residentName}.`,
-                linkPage: "schedule",
-                relatedId: `${row.cell.date}_${row.cell.serviceId}`,
-              })
-            );
-          }
-          return notifications;
-        })
-      );
-    } catch (notificationError) {
-      console.warn("Import completed, but some notifications could not be created.", notificationError);
-    }
     setImportRows([]);
     setSelectedImportIndexes([]);
     setMessage(`Imported ${cells.length} selected call assignment${cells.length === 1 ? "" : "s"} as draft.`);
@@ -446,19 +372,6 @@ export default function MonthlyScheduleMatrixPage({
   async function handlePublishToggle() {
     const nextStatus = allPublished ? "draft" : "published";
     await setRangeStatus(nextStatus);
-    if (nextStatus === "published") {
-      try {
-        await notifyAllActiveUsers({
-          type: "schedule-published",
-          title: "Call schedule published",
-          message: `${profile?.displayName || "An administrator"} published the call schedule for ${formatRange(days)}.`,
-          linkPage: "schedule",
-          relatedId: days[0],
-        });
-      } catch (notificationError) {
-        console.warn("Schedule published, but notifications could not be created.", notificationError);
-      }
-    }
   }
 
   return (

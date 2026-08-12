@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   CircularProgress,
+  Button,
   Link,
   MenuItem,
   Stack,
@@ -22,6 +23,9 @@ import {
   getSourceProfileLinks,
   type SourceProfileLink,
 } from "../services/sourceProfileLinkService";
+import SourceProfileLinkDialog from "../components/SourceProfileLinkDialog";
+import { useAuth } from "../context/AuthContext";
+import { canManageResidents } from "../utils/permissions";
 
 const academicYear = (date: string) => {
   const year = Number(date.slice(0, 4));
@@ -34,6 +38,8 @@ export default function SourceBlockSchedulePage({
 }: {
   onOpenResidentProfile?: (id: string) => void;
 }) {
+  const { profile: userProfile } = useAuth();
+  const canLink = canManageResidents(userProfile?.role);
   const [data, setData] = useState<SourceRecord | null>(null);
   const [profiles, setProfiles] = useState<Resident[]>([]);
   const [links, setLinks] = useState<SourceProfileLink[]>([]);
@@ -41,6 +47,7 @@ export default function SourceBlockSchedulePage({
   const [selectedPgy, setSelectedPgy] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [linkTarget, setLinkTarget] = useState("");
   useEffect(() => {
     void Promise.all([
       getSourceBlockSchedule(),
@@ -236,18 +243,53 @@ export default function SourceBlockSchedulePage({
                   <tr key={row.key}>
                     <td>
                       {row.profile && onOpenResidentProfile ? (
-                        <Link
-                          component="button"
-                          underline="hover"
-                          onClick={() => onOpenResidentProfile(row.profile!.id)}
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Link
+                            component="button"
+                            underline="hover"
+                            onClick={() => onOpenResidentProfile(row.profile!.id)}
+                            sx={{
+                              fontWeight: 900,
+                              fontSize: 12,
+                              textAlign: "left",
+                            }}
+                          >
+                            {row.name}
+                          </Link>
+                          {canLink && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() =>
+                                setLinkTarget(
+                                  `${row.sources[0].first_name} ${row.sources[0].last_name}`,
+                                )
+                              }
+                              sx={{ p: 0, minWidth: 0, fontSize: 9, textTransform: "none" }}
+                            >
+                              Change
+                            </Button>
+                          )}
+                        </Stack>
+                      ) : canLink ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() =>
+                            setLinkTarget(
+                              `${row.sources[0].first_name} ${row.sources[0].last_name}`,
+                            )
+                          }
                           sx={{
+                            p: 0,
+                            minWidth: 0,
                             fontWeight: 900,
                             fontSize: 12,
-                            textAlign: "left",
+                            textTransform: "none",
                           }}
                         >
-                          {row.name}
-                        </Link>
+                          {row.name} · Link profile
+                        </Button>
                       ) : (
                         <strong>{row.name}</strong>
                       )}
@@ -283,6 +325,18 @@ export default function SourceBlockSchedulePage({
           </Box>
         </Box>
       )}
+      <SourceProfileLinkDialog
+        open={Boolean(linkTarget)}
+        sourceName={linkTarget}
+        personType="resident"
+        profiles={profiles}
+        onClose={() => setLinkTarget("")}
+        onSaved={() =>
+          void getSourceProfileLinks().then((savedLinks) =>
+            setLinks(savedLinks),
+          )
+        }
+      />
     </Box>
   );
 }

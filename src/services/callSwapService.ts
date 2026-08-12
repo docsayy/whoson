@@ -17,7 +17,6 @@ import { db } from "../config/firebase";
 import type { CallSwapRequest, CallSwapStatus } from "../types/callSwap";
 import type { MonthlySchedule } from "../types/monthSchedule";
 import type { Resident } from "../types/resident";
-import { notifyResident } from "./notificationService";
 import { noteWrite, registerActiveListener } from "./dataCache";
 
 const swapsCollection = collection(db, "callSwapRequests");
@@ -118,17 +117,6 @@ export async function createCallSwapRequest(input: {
     })
   );
 
-  if (input.targetUid) {
-    await notifyResident({
-      residentId: input.targetResidentId,
-      type: "swap-requested",
-      title: "New call-swap request",
-      message: `${input.requesterName} asked you to cover ${input.serviceName} on ${input.date}.`,
-      linkPage: "call-swaps",
-      relatedId: docRef.id,
-    });
-  }
-
   return docRef.id;
 }
 
@@ -165,14 +153,6 @@ export async function acceptCallSwap(
   actor: { uid: string; name: string }
 ) {
   await transitionSwap(request, "pending-approval", actor, "Recipient accepted.");
-  await notifyResident({
-    residentId: request.requesterResidentId,
-    type: "swap-accepted",
-    title: "Call swap accepted",
-    message: `${request.targetName} accepted the proposed swap for ${request.serviceName} on ${request.date}. It now needs chief/coordinator approval.`,
-    linkPage: "call-swaps",
-    relatedId: request.id,
-  });
 }
 
 export async function declineCallSwap(
@@ -181,14 +161,6 @@ export async function declineCallSwap(
   note?: string
 ) {
   await transitionSwap(request, "declined", actor, note || "Recipient declined.");
-  await notifyResident({
-    residentId: request.requesterResidentId,
-    type: "swap-declined",
-    title: "Call swap declined",
-    message: `${request.targetName} declined the proposed swap for ${request.serviceName} on ${request.date}.`,
-    linkPage: "call-swaps",
-    relatedId: request.id,
-  });
 }
 
 export async function cancelCallSwap(
@@ -204,24 +176,6 @@ export async function rejectCallSwap(
   note: string
 ) {
   await transitionSwap(request, "rejected", actor, note || "Approval declined.");
-  await Promise.all([
-    notifyResident({
-      residentId: request.requesterResidentId,
-      type: "swap-rejected",
-      title: "Call swap not approved",
-      message: `${request.serviceName} on ${request.date} was not approved. ${note}`,
-      linkPage: "call-swaps",
-      relatedId: request.id,
-    }),
-    notifyResident({
-      residentId: request.targetResidentId,
-      type: "swap-rejected",
-      title: "Call swap not approved",
-      message: `${request.serviceName} on ${request.date} was not approved. ${note}`,
-      linkPage: "call-swaps",
-      relatedId: request.id,
-    }),
-  ]);
 }
 
 export async function approveAndApplyCallSwap({
@@ -305,24 +259,6 @@ export async function approveAndApplyCallSwap({
   });
   await batch.commit();
 
-  await Promise.all([
-    notifyResident({
-      residentId: request.requesterResidentId,
-      type: "swap-approved",
-      title: "Call swap approved",
-      message: `${request.serviceName} on ${request.date} was moved to ${targetResident.displayName} in the draft schedule. It will be visible to residents after publication.`,
-      linkPage: "call-swaps",
-      relatedId: request.id,
-    }),
-    notifyResident({
-      residentId: request.targetResidentId,
-      type: "swap-approved",
-      title: "Call swap approved",
-      message: `${request.serviceName} on ${request.date} was assigned to you in the draft schedule. It will be visible after publication.`,
-      linkPage: "call-swaps",
-      relatedId: request.id,
-    }),
-  ]);
 }
 
 export async function saveCallSwapRequest(request: CallSwapRequest) {

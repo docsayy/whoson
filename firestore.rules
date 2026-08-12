@@ -180,24 +180,6 @@ service cloud.firestore {
       allow create, update, delete: if isOwner(uid) || isManager();
     }
 
-    match /notifications/{id} {
-      allow read: if signedIn() && (
-        (("recipientUid" in resource.data) &&
-          resource.data.recipientUid == request.auth.uid) ||
-        (("recipientResidentId" in resource.data) &&
-          ("residentId" in profile()) &&
-          resource.data.recipientResidentId == profile().residentId)
-      );
-      allow create: if signedIn();
-      allow update: if signedIn() && (
-        (("recipientUid" in resource.data) &&
-          resource.data.recipientUid == request.auth.uid) ||
-        (("recipientResidentId" in resource.data) &&
-          ("residentId" in profile()) &&
-          resource.data.recipientResidentId == profile().residentId)
-      );
-      allow delete: if isManager();
-    }
 
     match /callSwapRequests/{id} {
       allow read: if signedIn();
