@@ -180,6 +180,7 @@ function buildPaths(start: string, end: string) {
     callSchedule: `/api/call-schedule?${qs}`,
     attendingCoverage: `/api/attending-coverage?${qs}`,
     absences: `/api/absences?${qs}`,
+    lectures: `/api/lectures?${qs}`,
     inpatientServices: `/api/service-assignments?kind=inpatient&${qs}`,
     clinicServices: `/api/service-assignments?kind=clinic&${qs}`,
   } as const;
