@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../config/firebase";
+import { noteWrite, registerActiveListener } from "./dataCache";
 import { initialDirectoryContacts } from "../data/initialDirectoryContacts";
 import type {
   DirectoryContact,
@@ -63,26 +64,64 @@ function mapContact(
   };
 }
 
+type DirectorySubscriber = {
+  onValue: (contacts: DirectoryContact[]) => void;
+  onError?: (error: Error) => void;
+};
+
+const directorySubscribers = new Set<DirectorySubscriber>();
+let directoryFirestoreUnsubscribe: Unsubscribe | null = null;
+let directoryReleaseMetric: (() => void) | null = null;
+let currentDirectoryContacts: DirectoryContact[] | null = null;
+
+function startSharedDirectoryListener() {
+  if (directoryFirestoreUnsubscribe) return;
+  directoryReleaseMetric = registerActiveListener();
+  directoryFirestoreUnsubscribe = onSnapshot(
+    directoryCollection,
+    (snapshot) => {
+      currentDirectoryContacts = snapshot.docs
+        .map(mapContact)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      directorySubscribers.forEach((subscriber) =>
+        subscriber.onValue(currentDirectoryContacts || [])
+      );
+    },
+    (error) =>
+      directorySubscribers.forEach((subscriber) => subscriber.onError?.(error))
+  );
+}
+
+function stopSharedDirectoryListenerIfUnused() {
+  if (directorySubscribers.size > 0 || !directoryFirestoreUnsubscribe) return;
+  directoryFirestoreUnsubscribe();
+  directoryFirestoreUnsubscribe = null;
+  directoryReleaseMetric?.();
+  directoryReleaseMetric = null;
+  currentDirectoryContacts = null;
+}
+
 export function subscribeToDirectoryContacts(
   onValue: (contacts: DirectoryContact[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
-    directoryCollection,
-    (snapshot) => {
-      const contacts = snapshot.docs
-        .map(mapContact)
-        .sort((a, b) => a.name.localeCompare(b.name));
+  const subscriber = { onValue, onError };
+  directorySubscribers.add(subscriber);
+  if (currentDirectoryContacts) {
+    queueMicrotask(() => onValue(currentDirectoryContacts || []));
+  }
+  startSharedDirectoryListener();
 
-      onValue(contacts);
-    },
-    (error) => onError?.(error)
-  );
+  return () => {
+    directorySubscribers.delete(subscriber);
+    stopSharedDirectoryListenerIfUnused();
+  };
 }
 
 export async function createDirectoryContact(
   input: DirectoryContactInput
 ): Promise<string> {
+  noteWrite();
   const ref = await addDoc(directoryCollection, {
     ...input,
     createdAt: serverTimestamp(),
@@ -97,6 +136,7 @@ export async function updateDirectoryContact(
 ): Promise<void> {
   const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...data } = contact;
 
+  noteWrite();
   await updateDoc(doc(db, "directoryContacts", id), {
     ...data,
     updatedAt: serverTimestamp(),
@@ -104,6 +144,7 @@ export async function updateDirectoryContact(
 }
 
 export async function deleteDirectoryContact(id: string): Promise<void> {
+  noteWrite();
   await deleteDoc(doc(db, "directoryContacts", id));
 }
 
@@ -118,6 +159,7 @@ export async function importInitialDirectoryContacts(): Promise<number> {
       const stableId = contact.sourceKey || `provided-${start + imported + 1}`;
       const ref = doc(db, "directoryContacts", stableId);
 
+      noteWrite();
       batch.set(
         ref,
         {

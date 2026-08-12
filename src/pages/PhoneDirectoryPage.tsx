@@ -24,7 +24,7 @@ import {
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
-import CallIcon from "@mui/icons-material/Call";
+import PhoneIcon from "@mui/icons-material/Phone";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import FileUploadIcon from "@mui/icons-material/FileUpload";
@@ -483,37 +483,49 @@ function ContactCard({
         minWidth: 0,
       }}
     >
-      <CardContent
-        sx={{
-          p: 0.85,
-          "&:last-child": { pb: 0.85 },
-        }}
-      >
+      <CardContent sx={{ p: 0.85, "&:last-child": { pb: 0.85 } }}>
         <Stack
           direction="row"
           justifyContent="space-between"
           alignItems="flex-start"
           spacing={0.5}
         >
-          <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0.55}
+            flexWrap="wrap"
+            useFlexGap
+            sx={{ minWidth: 0, flex: 1 }}
+          >
             <Typography
               fontWeight={850}
-              noWrap
               title={contact.name}
-              sx={{ fontSize: 13.25, lineHeight: 1.2 }}
+              sx={{ fontSize: 13.25, lineHeight: 1.2, overflowWrap: "anywhere" }}
             >
               {contact.name}
             </Typography>
 
-            <Typography
-              color="text.secondary"
-              noWrap
+            <Chip
+              label={contact.category}
+              size="small"
               title={contact.category}
-              sx={{ fontSize: 10.75, mt: 0.15 }}
-            >
-              {contact.category}
-            </Typography>
-          </Box>
+              sx={{
+                height: 20,
+                maxWidth: "100%",
+                fontSize: 9.75,
+                fontWeight: 750,
+                color: "#475569",
+                backgroundColor: "#f1f5f9",
+                border: "1px solid #e2e8f0",
+                "& .MuiChip-label": {
+                  px: 0.7,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                },
+              }}
+            />
+          </Stack>
 
           {canManage && (
             <Stack direction="row" spacing={0}>
@@ -545,13 +557,15 @@ function ContactCard({
 
         {hasNumbers && <Divider sx={{ my: 0.55 }} />}
 
+        {/* Numbers/extensions intentionally live on their own row below the
+            name + category header for faster scanning on mobile. */}
         <Stack direction="row" flexWrap="wrap" gap={0.4}>
           {contact.phoneNumbers.map((phone) => (
             <Button
               key={`phone-${phone}`}
               size="small"
               variant="outlined"
-              startIcon={<CallIcon sx={{ fontSize: "14px !important" }} />}
+              startIcon={<PhoneIcon sx={{ fontSize: "14px !important" }} />}
               component="a"
               href={`tel:${normalizePhoneForDial(phone)}`}
               sx={{
@@ -573,7 +587,7 @@ function ContactCard({
               key={`ext-${extension}`}
               size="small"
               variant="outlined"
-              startIcon={<CallIcon sx={{ fontSize: "14px !important" }} />}
+              startIcon={<PhoneIcon sx={{ fontSize: "14px !important" }} />}
               component="a"
               href={`tel:${extensionDialNumber(extension)}`}
               sx={{

@@ -23,6 +23,7 @@ import TodayIcon from "@mui/icons-material/Today";
 import { useAttendings } from "../hooks/useAttendings";
 import { useAttendingSchedule } from "../hooks/useAttendingSchedule";
 import type { AttendingScheduleAssignment } from "../types/attendingSchedule";
+import { formatBirthday, validBirthday } from "../utils/birthday";
 
 type ProfileTab = "calendar" | "assignments";
 
@@ -290,6 +291,11 @@ export default function AttendingProfilePage({
             <Typography color="text.secondary" fontSize={14}>
               Attending profile, monthly calendar, and assignment history.
             </Typography>
+            {validBirthday(attending.birthdayMonth, attending.birthdayDay) && (
+              <Typography color="text.secondary" fontSize={12}>
+                Birthday: {formatBirthday(attending)}
+              </Typography>
+            )}
           </Box>
         </Stack>
 

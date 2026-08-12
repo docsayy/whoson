@@ -16,90 +16,81 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import PrintIcon from "@mui/icons-material/Print";
 import DownloadIcon from "@mui/icons-material/Download";
+import PrintIcon from "@mui/icons-material/Print";
 
+import {
+  RESIDENT_CALL_SERVICES,
+  findResidentCallService,
+  getResidentCallServicesForDate,
+  isShortDutyService,
+  isWeekendScheduleDate,
+} from "../config/scheduleServices";
+import { useAuth } from "../context/AuthContext";
 import { useAcademicBlocks } from "../hooks/useAcademicBlocks";
 import { useBlockAssignments } from "../hooks/useBlockAssignments";
-import { useMonthlySchedule } from "../hooks/useMonthlySchedule";
+import { useAcademicYearSchedules } from "../hooks/useAcademicYearSchedules";
 import { useResidents } from "../hooks/useResidents";
-import type { MonthlyScheduleCell } from "../types/monthSchedule";
-import type { RequiredTraining, ScheduleService } from "../types/schedule";
 import {
-  EXACT_NF_SERVICE_IDS,
+  getDraftAssignmentsForYear,
+  getLatestPublishedAssignmentsForYear,
+} from "../services/blockAssignmentService";
+import type { MonthlyScheduleCell } from "../types/monthSchedule";
+import { isHospitalHoliday } from "../utils/holidayRules";
+import {
   getAutoNightFloatCell,
+  isNightFloatService,
   parseLocalDate,
 } from "../utils/nightFloatSchedule";
+import { canBuildSchedule } from "../utils/permissions";
+import { formatBirthday, validBirthday } from "../utils/birthday";
 
 type ProfileTab = "calendar" | "blocks";
-
-const residentCallServices: ScheduleService[] = [
-  makeService("tele-pgy1", "Tele PGY1", "Day", 1, ["PGY-1"], "07:00", "19:00"),
-  makeService("2n-ccu-pgy1", "2N-CCU PGY1", "Day", 2, ["PGY-1"], "07:00", "19:00"),
-  makeService("2n-ccu-pgy2", "2N-CCU PGY2", "Day", 3, ["PGY-2"], "07:00", "19:00"),
-  makeService("3w-pgy1", "3W PGY1", "Day", 4, ["PGY-1"], "07:00", "19:00"),
-  makeService("4n-pgy1", "4N PGY1", "Day", 5, ["PGY-1"], "07:00", "19:00"),
-  makeService("4n-3w-pgy2", "4N-3W PGY2", "Day", 6, ["PGY-2"], "07:00", "19:00"),
-  makeService("micu-pgy1", "MICU PGY1", "ICU", 7, ["PGY-1"], "07:00", "07:00"),
-  makeService("micu-senior", "MICU Senior", "ICU", 8, ["PGY-2", "PGY-3"], "08:00", "08:00"),
-  makeService("chief-on-call", "Chief On Call", "Chief", 9, ["PGY-3"], "07:00", "19:00"),
-
-  makeService(EXACT_NF_SERVICE_IDS.pgy1FourNorthThreeWest, "4N-3W PGY1 NF", "Night", 10, ["PGY-1"], "19:00", "07:00"),
-  makeService(EXACT_NF_SERVICE_IDS.pgy2FourNorthThreeWest, "4N-3W PGY2 NF", "Night", 11, ["PGY-2"], "19:00", "07:00"),
-  makeService(EXACT_NF_SERVICE_IDS.pgy1TwoNorthCcu, "2N-CCU PGY1 NF", "Night", 12, ["PGY-1"], "19:00", "07:00"),
-  makeService(EXACT_NF_SERVICE_IDS.pgy2TwoNorthCcu, "2N-CCU PGY2 NF", "Night", 13, ["PGY-2"], "19:00", "07:00"),
-  makeService(EXACT_NF_SERVICE_IDS.pgy3, "PGY3 NF", "Night", 14, ["PGY-3"], "19:00", "07:00"),
-];
-
-function makeService(
-  id: string,
-  name: string,
-  category: string,
-  order: number,
-  requiredTraining: RequiredTraining[],
-  start: string,
-  end: string
-): ScheduleService {
-  return {
-    id,
-    name,
-    shortName: name,
-    category,
-    coverageGroup: "Resident",
-    attendingScheduleType: "None",
-    requiredTraining,
-    defaultStartTime: start,
-    defaultEndTime: end,
-    displayOrderCall: order,
-    displayOrderAll: order,
-    visibleOnCall: true,
-    visibleOnAllServices: true,
-    active: true,
-  };
-}
 
 function toDateInputValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function getMonthId(date: Date) {
+function monthId(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getMonthName(monthId: string) {
-  const [year, month] = monthId.split("-").map(Number);
+function addMonths(value: string, count: number) {
+  const [year, month] = value.split("-").map(Number);
+  return monthId(new Date(year, month - 1 + count, 1));
+}
+
+function monthName(value: string) {
+  const [year, month] = value.split("-").map(Number);
   return new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
 }
 
-function getCalendarDays(monthId: string) {
-  const [year, month] = monthId.split("-").map(Number);
-  const firstDay = new Date(year, month - 1, 1);
-  const start = new Date(firstDay);
-  start.setDate(firstDay.getDate() - firstDay.getDay());
+function academicYearForMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return month >= 7 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+}
 
+function academicYearDates(academicYear: string) {
+  const startYear = Number(academicYear.slice(0, 4));
+  const start = new Date(startYear, 6, 1);
+  const end = new Date(startYear + 1, 5, 30);
+  const dates: string[] = [];
+
+  for (const current = new Date(start); current <= end; current.setDate(current.getDate() + 1)) {
+    dates.push(toDateInputValue(current));
+  }
+
+  return dates;
+}
+
+function calendarDays(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const first = new Date(year, month - 1, 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
   return Array.from({ length: 42 }, (_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
@@ -107,71 +98,38 @@ function getCalendarDays(monthId: string) {
   });
 }
 
-function addMonths(monthId: string, months: number) {
-  const [year, month] = monthId.split("-").map(Number);
-  const date = new Date(year, month - 1 + months, 1);
-  return getMonthId(date);
-}
-
-function isSameMonth(date: string, monthId: string) {
-  return date.slice(0, 7) === monthId;
-}
-
 function shortDate(date: string) {
   const parsed = parseLocalDate(date);
   return `${parsed.getMonth() + 1}/${parsed.getDate()}`;
 }
 
-function getCurrentBlockRotation(
-  date: string,
-  residentId: string,
-  blockAssignments: any[],
-  blocks: any[]
-) {
-  const block = blocks.find((item) => date >= item.startDate && date <= item.endDate);
-  if (!block) return "";
-
-  const assignment = blockAssignments.find(
-    (item) => item.blockId === block.id && item.residentId === residentId
-  );
-
-  return assignment?.rotationName || "";
-}
-
 function rotationColor(name: string) {
   const lower = name.toLowerCase();
-
   if (lower.includes("vacation")) return { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" };
   if (lower.includes("nf") || lower.includes("night")) return { bg: "#eef2ff", color: "#4338ca", border: "#c7d2fe" };
   if (lower.includes("micu")) return { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" };
   if (lower.includes("elective")) return { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" };
   if (lower.includes("jeopardy")) return { bg: "#fefce8", color: "#a16207", border: "#fde68a" };
-  if (lower.includes("call") || lower.includes("chief")) return { bg: "#fff1f2", color: "#be123c", border: "#fecdd3" };
-
   return { bg: "#ecfdf5", color: "#15803d", border: "#bbf7d0" };
 }
 
 function downloadCsv(filename: string, rows: Record<string, string>[]) {
-  if (rows.length === 0) return;
-
+  if (!rows.length) return;
   const headers = Object.keys(rows[0]);
   const csv = [
-    headers.map((h) => `"${h}"`).join(","),
+    headers.map((header) => `"${header}"`).join(","),
     ...rows.map((row) =>
       headers
         .map((header) => `"${String(row[header] || "").replace(/"/g, '""')}"`)
         .join(",")
     ),
   ].join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-
   link.href = url;
-  link.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  link.download = filename;
   link.click();
-
   URL.revokeObjectURL(url);
 }
 
@@ -182,38 +140,56 @@ export default function ResidentScheduleProfilePage({
   residentId: string;
   onBack: () => void;
 }) {
+  const { profile } = useAuth();
+  const allowBuild = canBuildSchedule(profile?.role);
   const [tab, setTab] = useState<ProfileTab>("calendar");
-  const [monthId, setMonthId] = useState(getMonthId(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState(monthId());
+  const selectedAcademicYear = academicYearForMonth(selectedMonth);
 
   const { residents, loading: residentsLoading, error: residentsError } = useResidents();
   const { blocks, loading: blocksLoading, error: blocksError } = useAcademicBlocks();
+  const { assignments: allBlockAssignments, loading: assignmentLoading, error: assignmentError } = useBlockAssignments();
   const {
-    assignments: blockAssignments,
-    loading: blockAssignmentsLoading,
-    error: blockAssignmentsError,
-  } = useBlockAssignments();
-
-  const {
-    schedule,
-    loading: scheduleLoading,
-    error: scheduleError,
-  } = useMonthlySchedule(monthId);
+    schedules: academicYearSchedules,
+    loading: academicYearSchedulesLoading,
+    error: academicYearSchedulesError,
+  } = useAcademicYearSchedules(selectedAcademicYear);
 
   const resident = residents.find((item) => item.id === residentId);
-  const days = useMemo(() => getCalendarDays(monthId), [monthId]);
+  const days = useMemo(() => calendarDays(selectedMonth), [selectedMonth]);
 
-  const monthlyAssignments = schedule?.assignments || {};
+  const relevantYears = useMemo(
+    () => Array.from(new Set(blocks.map((block) => block.academicYear))),
+    [blocks]
+  );
 
-  const residentCallCells = useMemo(() => {
+  const blockAssignments = useMemo(
+    () =>
+      relevantYears.flatMap((year) =>
+        allowBuild
+          ? getDraftAssignmentsForYear(allBlockAssignments, year)
+          : getLatestPublishedAssignmentsForYear(allBlockAssignments, year)
+      ),
+    [allBlockAssignments, allowBuild, relevantYears]
+  );
+
+  const residentCalls = useMemo(() => {
     if (!resident) return [];
 
-    const manualCells = Object.values(monthlyAssignments).filter(
-      (cell) => cell.residentId === resident.id
-    );
+    const allManual = Object.values(academicYearSchedules)
+      .filter(
+        (item) =>
+          item &&
+          item.status !== "archived" &&
+          (allowBuild || item.status === "published")
+      )
+      .flatMap((item) => Object.values(item?.assignments || {}));
 
-    const autoCells = days
+    const manual = allManual.filter((cell) => cell.residentId === resident.id);
+
+    const auto = academicYearDates(selectedAcademicYear)
       .flatMap((date) =>
-        residentCallServices.map((service) =>
+        getResidentCallServicesForDate(date).map((service) =>
           getAutoNightFloatCell({
             date,
             service,
@@ -225,24 +201,84 @@ export default function ResidentScheduleProfilePage({
       )
       .filter(Boolean) as MonthlyScheduleCell[];
 
-    const combined = [...manualCells];
-
-    for (const autoCell of autoCells) {
-      if (autoCell.residentId !== resident.id) continue;
-
-      const alreadyManual = combined.some(
-        (cell) => cell.date === autoCell.date && cell.serviceId === autoCell.serviceId
+    const combined = [...manual];
+    for (const cell of auto) {
+      const manuallyAssigned = allManual.some(
+        (item) =>
+          item.date === cell.date && item.serviceId === cell.serviceId
       );
-
-      if (!alreadyManual) combined.push(autoCell);
+      if (manuallyAssigned || cell.residentId !== resident.id) continue;
+      combined.push(cell);
     }
 
-    return combined;
-  }, [blockAssignments, blocks, days, monthlyAssignments, resident, residents]);
+    return combined.sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.serviceName.localeCompare(b.serviceName)
+    );
+  }, [
+    academicYearSchedules,
+    allowBuild,
+    blockAssignments,
+    blocks,
+    resident,
+    residents,
+    selectedAcademicYear,
+  ]);
+
+  const academicYearCallSummary = useMemo(() => {
+    const byService = new Map<string, { label: string; count: number; order: number }>();
+    let nightFloat = 0;
+    let shortDuty = 0;
+    let weekend = 0;
+    let holiday = 0;
+
+    for (const cell of residentCalls) {
+      const service =
+        findResidentCallService(cell.serviceId) ||
+        findResidentCallService(cell.serviceName);
+      const id = service?.id || cell.serviceId || cell.serviceName;
+      const label = service?.name || cell.serviceName;
+      const order = service?.displayOrderCall ?? 999;
+      const current = byService.get(id);
+      byService.set(id, {
+        label,
+        count: (current?.count || 0) + 1,
+        order,
+      });
+
+      if (isNightFloatService(id)) nightFloat += 1;
+      if (service && isShortDutyService(service)) shortDuty += 1;
+      if (isWeekendScheduleDate(cell.date)) weekend += 1;
+      if (isHospitalHoliday(cell.date)) holiday += 1;
+    }
+
+    const canonicalOrder = new Map(
+      RESIDENT_CALL_SERVICES.map((service, index) => [service.id, index])
+    );
+
+    const services = Array.from(byService.entries())
+      .map(([id, value]) => ({ id, ...value }))
+      .sort(
+        (a, b) =>
+          (canonicalOrder.get(a.id) ?? a.order) -
+            (canonicalOrder.get(b.id) ?? b.order) ||
+          a.label.localeCompare(b.label)
+      );
+
+    return {
+      total: residentCalls.length,
+      nightFloat,
+      shortDuty,
+      weekend,
+      holiday,
+      services,
+    };
+  }, [residentCalls]);
+
 
   const blockRows = useMemo(() => {
     if (!resident) return [];
-
     return blocks
       .slice()
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -250,491 +286,173 @@ export default function ResidentScheduleProfilePage({
         const assignment = blockAssignments.find(
           (item) => item.blockId === block.id && item.residentId === resident.id
         );
+        const activeChief = allowBuild
+          ? block.activeChiefDraft || block.activeChiefPublished || null
+          : block.activeChiefPublished || null;
 
         return {
           block: block.name,
           startDate: block.startDate,
           endDate: block.endDate,
           rotation: assignment?.rotationName || "Unassigned",
-          notes: assignment?.notes || "",
+          notes: assignment?.notes || assignment?.overrideReason || "",
+          activeChief:
+            activeChief?.residentId === resident.id ? "Yes" : "",
         };
       });
   }, [blockAssignments, blocks, resident]);
 
   const blockSummary = useMemo(() => {
     const counts: Record<string, number> = {};
-
     for (const row of blockRows) {
       if (row.rotation === "Unassigned") continue;
       counts[row.rotation] = (counts[row.rotation] || 0) + 1;
     }
-
     return Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0]));
   }, [blockRows]);
 
   const loading =
-    residentsLoading || blocksLoading || blockAssignmentsLoading || scheduleLoading;
-
-  const error = residentsError || blocksError || blockAssignmentsError || scheduleError;
-
-  function getCallsForDate(date: string) {
-    return residentCallCells.filter((cell) => cell.date === date);
-  }
-
-  function handlePrint() {
-    window.print();
-  }
-
-  function exportCalendarCsv() {
-    if (!resident) return;
-
-    const rows = days
-      .filter((date) => isSameMonth(date, monthId))
-      .map((date) => {
-        const rotation = getCurrentBlockRotation(date, resident.id, blockAssignments, blocks);
-        const calls = getCallsForDate(date).map((cell) => cell.serviceName).join("; ");
-
-        return {
-          Date: date,
-          Rotation: rotation,
-          Calls: calls,
-        };
-      });
-
-    downloadCsv(`${resident.displayName}-${monthId}-calendar.csv`, rows);
-  }
-
-  function exportBlocksCsv() {
-    if (!resident) return;
-    downloadCsv(`${resident.displayName}-blocks.csv`, blockRows);
-  }
+    residentsLoading ||
+    blocksLoading ||
+    assignmentLoading ||
+    academicYearSchedulesLoading;
+  const error =
+    residentsError ||
+    blocksError ||
+    assignmentError ||
+    academicYearSchedulesError;
 
   if (loading) {
-    return (
-      <Stack alignItems="center" sx={{ py: 6 }}>
-        <CircularProgress />
-        <Typography color="text.secondary" sx={{ mt: 2 }}>
-          Loading resident profile...
-        </Typography>
-      </Stack>
-    );
+    return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /><Typography color="text.secondary" sx={{ mt: 1 }}>Loading resident profile...</Typography></Stack>;
   }
 
   if (!resident) {
-    return (
-      <Box>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ mb: 2 }}>
-          Back
-        </Button>
-        <Alert severity="error">Resident not found.</Alert>
-      </Box>
-    );
+    return <Box><Button startIcon={<ArrowBackIcon />} onClick={onBack}>Back</Button><Alert severity="error" sx={{ mt: 1 }}>Resident not found.</Alert></Box>;
+  }
+
+  function rotationForDate(date: string) {
+    const block = blocks.find((item) => date >= item.startDate && date <= item.endDate);
+    if (!block) return "";
+    return blockAssignments.find((item) => item.blockId === block.id && item.residentId === residentId)?.rotationName || "";
+  }
+
+  function callsForDate(date: string) {
+    return residentCalls.filter((cell) => cell.date === date);
   }
 
   return (
-    <Box sx={{ width: "100%", maxWidth: "none", minWidth: 0 }}>
-      <Box className="no-print" sx={{ mb: { xs: 1, md: 2 } }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ mb: 1 }}>
-          Back
-        </Button>
+    <Box sx={{ width: "100%", maxWidth: "none" }}>
+      <Box className="no-print"><Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ mb: 1 }}>Back</Button>{error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}</Box>
 
-        {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
-      </Box>
-
-      <Card sx={{ borderRadius: { xs: 2, md: 3 }, mb: { xs: 1, md: 2 } }} className="print-header">
-        <CardContent sx={{ p: { xs: 1.25, md: 2 } }}>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            justifyContent="space-between"
-            spacing={1}
-          >
-            <Box>
-              <Typography
-                variant="h4"
-                fontWeight={900}
-                sx={{ fontSize: { xs: 24, md: 34 }, lineHeight: 1.1 }}
-              >
-                {resident.displayName}
-              </Typography>
-              <Typography color="text.secondary" fontWeight={700} fontSize={{ xs: 13, md: 14 }}>
-                {resident.pgy} Resident
-              </Typography>
-              <Typography color="text.secondary" fontSize={13}>
-                {tab === "calendar"
-                  ? `${getMonthName(monthId)} Monthly Schedule`
-                  : "Academic Block Schedule"}
-              </Typography>
-            </Box>
-
-            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap className="no-print">
-              <Button
-                variant="outlined"
-                startIcon={<PrintIcon />}
-                onClick={handlePrint}
-                size="small"
-                sx={{ textTransform: "none", fontWeight: 800 }}
-              >
-                Print/PDF
-              </Button>
-
-              <Button
-                variant="outlined"
-                startIcon={<DownloadIcon />}
-                onClick={tab === "calendar" ? exportCalendarCsv : exportBlocksCsv}
-                size="small"
-                sx={{ textTransform: "none", fontWeight: 800 }}
-              >
-                CSV
-              </Button>
-            </Stack>
+      <Card sx={{ borderRadius: 3, mb: 1.5 }}>
+        <CardContent sx={{ p: 1.5 }}>
+          <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1}>
+            <Box><Typography variant="h4" fontWeight={900} sx={{ fontSize: { xs: 21, md: 25 } }}>{resident.displayName}</Typography><Typography color="text.secondary" fontWeight={700}>{resident.pgy} Resident</Typography>{validBirthday(resident.birthdayMonth, resident.birthdayDay) && <Typography color="text.secondary" fontSize={12}>Birthday: {formatBirthday(resident)}</Typography>}<Typography color="text.secondary" fontSize={13}>{allowBuild ? "Draft block view" : "Published block view"}</Typography></Box>
+            <Stack direction="row" spacing={0.75} className="no-print"><Button variant="outlined" startIcon={<PrintIcon />} onClick={() => window.print()}>Print/PDF</Button><Button variant="outlined" startIcon={<DownloadIcon />} onClick={() => tab === "blocks" ? downloadCsv(`${resident.displayName}-blocks.csv`, blockRows) : downloadCsv(`${resident.displayName}-${selectedMonth}.csv`, days.filter((date) => date.startsWith(selectedMonth)).map((date) => ({ Date: date, Rotation: rotationForDate(date), Calls: callsForDate(date).map((cell) => cell.serviceName).join("; ") })))}>CSV</Button></Stack>
           </Stack>
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: { xs: 1, md: 2 }, borderRadius: 2 }} className="no-print">
-        <CardContent sx={{ p: { xs: 0.5, md: 1 } }}>
-          <Tabs
-            value={tab}
-            onChange={(_, value: ProfileTab) => setTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              minHeight: 38,
-              "& .MuiTab-root": {
-                minHeight: 38,
-                py: 0.75,
-                px: { xs: 1.25, md: 2 },
-                fontSize: { xs: 12, md: 13 },
-                fontWeight: 850,
-              },
-            }}
-          >
-            <Tab label="Monthly Calendar" value="calendar" />
-            <Tab label="Academic Blocks" value="blocks" />
-          </Tabs>
-        </CardContent>
-      </Card>
+      <Card sx={{ mb: 1.5 }} className="no-print"><CardContent sx={{ p: 0.5 }}><Tabs value={tab} onChange={(_, value: ProfileTab) => setTab(value)}><Tab label="Monthly Calendar" value="calendar" /><Tab label="Academic Blocks" value="blocks" /></Tabs></CardContent></Card>
 
       {tab === "calendar" ? (
-        <Card sx={{ borderRadius: { xs: 2, md: 3 } }}>
-          <CardContent sx={{ p: { xs: 0.75, md: 1.25 } }}>
-            <Stack
-              direction="row"
-              alignItems="center"
-              spacing={0.75}
-              sx={{ mb: 1 }}
-              className="no-print"
-            >
-              <Button
-                variant="outlined"
-                onClick={() => setMonthId(addMonths(monthId, -1))}
-                sx={{ minWidth: 42, px: { xs: 0.75, md: 1.5 } }}
-              >
-                <ChevronLeftIcon />
-              </Button>
-
-              <Box
-                sx={{
-                  height: 38,
-                  px: { xs: 1, md: 2 },
-                  flex: 1,
-                  minWidth: 0,
-                  display: "grid",
-                  placeItems: "center",
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 2,
-                  backgroundColor: "#f8fafc",
-                  fontWeight: 900,
-                  fontSize: { xs: 13, md: 15 },
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {getMonthName(monthId)}
-              </Box>
-
-              <Button
-                variant="outlined"
-                onClick={() => setMonthId(addMonths(monthId, 1))}
-                sx={{ minWidth: 42, px: { xs: 0.75, md: 1.5 } }}
-              >
-                <ChevronRightIcon />
-              </Button>
-            </Stack>
-
-            <Box className="print-area" sx={{ overflowX: "auto", width: "100%" }}>
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: {
-                    xs: "repeat(7, minmax(62px, 1fr))",
-                    sm: "repeat(7, minmax(88px, 1fr))",
-                    md: "repeat(7, minmax(110px, 1fr))",
-                  },
-                  minWidth: { xs: 434, sm: 616, md: 0 },
-                  width: { xs: "max-content", md: "100%" },
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                }}
-              >
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                  <Box
-                    key={day}
-                    sx={{
-                      p: { xs: 0.45, md: 0.75 },
-                      backgroundColor: "#e2e8f0",
-                      borderRight: "1px solid",
-                      borderBottom: "1px solid",
-                      borderColor: "divider",
-                      textAlign: "center",
-                      fontWeight: 900,
-                      fontSize: { xs: 10.5, md: 12 },
-                    }}
-                  >
-                    {day}
-                  </Box>
-                ))}
-
-                {days.map((date) => {
-                  const rotation = getCurrentBlockRotation(
-                    date,
-                    resident.id,
-                    blockAssignments,
-                    blocks
-                  );
-
-                  const calls = getCallsForDate(date);
-                  const dimmed = !isSameMonth(date, monthId);
-                  const rotationStyle = rotation ? rotationColor(rotation) : undefined;
-
-                  return (
-                    <Box
-                      key={date}
-                      sx={{
-                        minHeight: { xs: 62, sm: 74, md: 86 },
-                        p: { xs: 0.4, md: 0.55 },
-                        borderRight: "1px solid",
-                        borderBottom: "1px solid",
-                        borderColor: "divider",
-                        backgroundColor: dimmed ? "#f8fafc" : "white",
-                        opacity: dimmed ? 0.5 : 1,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <Typography fontWeight={900} fontSize={{ xs: 10.5, md: 12 }} sx={{ mb: 0.25 }}>
-                        {parseLocalDate(date).getDate()}
-                      </Typography>
-
-                      {rotation && (
-                        <Box
-                          sx={{
-                            px: 0.4,
-                            py: 0.15,
-                            mb: 0.25,
-                            borderRadius: 0.75,
-                            color: rotationStyle?.color,
-                            backgroundColor: rotationStyle?.bg,
-                            border: "1px solid",
-                            borderColor: rotationStyle?.border,
-                            fontSize: { xs: 9.5, md: 10.5 },
-                            fontWeight: 850,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {rotation}
-                        </Box>
-                      )}
-
-                      <Stack spacing={0.25}>
-                        {calls.slice(0, 2).map((call) => {
-                          const style = rotationColor(call.serviceName);
-
-                          return (
-                            <Box
-                              key={`${call.date}-${call.serviceId}`}
-                              sx={{
-                                px: 0.4,
-                                py: 0.1,
-                                borderRadius: 0.75,
-                                backgroundColor: style.bg,
-                                border: "1px solid",
-                                borderColor: style.border,
-                                color: style.color,
-                                fontSize: { xs: 9, md: 10 },
-                                fontWeight: 900,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {call.serviceName}
-                            </Box>
-                          );
-                        })}
-
-                        {calls.length > 2 && (
-                          <Typography fontSize={9.5} color="text.secondary">
-                            +{calls.length - 2} more
-                          </Typography>
-                        )}
-                      </Stack>
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
+        <Stack spacing={1.25}>
+          <AcademicYearCallSummary
+            academicYear={selectedAcademicYear}
+            summary={academicYearCallSummary}
+          />
+          <Card sx={{ borderRadius: 3 }}><CardContent sx={{ p: 1 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }} className="no-print"><Button variant="outlined" onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}><ChevronLeftIcon /></Button><Box sx={{ flex: 1, height: 34, display: "grid", placeItems: "center", border: "1px solid", borderColor: "divider", borderRadius: 2, fontWeight: 900, fontSize: 13 }}>{monthName(selectedMonth)}</Box><Button variant="outlined" onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}><ChevronRightIcon /></Button></Stack>
+          <Box sx={{ overflowX: "auto" }} className="print-area"><Box sx={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(88px,1fr))", minWidth: 616, border: "1px solid", borderColor: "divider" }}>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day) => <Box key={day} sx={{ p: 0.6, backgroundColor: "#e2e8f0", borderRight: "1px solid", borderBottom: "1px solid", borderColor: "divider", textAlign: "center", fontWeight: 900 }}>{day}</Box>)}{days.map((date) => { const rotation = rotationForDate(date); const calls = callsForDate(date); const dimmed = !date.startsWith(selectedMonth); const style = rotationColor(rotation || ""); return <Box key={date} sx={{ minHeight: 78, p: 0.5, borderRight: "1px solid", borderBottom: "1px solid", borderColor: "divider", opacity: dimmed ? 0.45 : 1, backgroundColor: dimmed ? "#f8fafc" : "white" }}><Typography fontWeight={900} fontSize={11}>{parseLocalDate(date).getDate()}</Typography>{rotation && <Box sx={{ mt: 0.3, px: 0.4, borderRadius: 0.75, backgroundColor: style.bg, color: style.color, border: `1px solid ${style.border}`, fontSize: 10, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rotation}</Box>}<Stack spacing={0.2} sx={{ mt: 0.25 }}>{calls.slice(0,2).map((call) => <Box key={`${call.date}-${call.serviceId}`} sx={{ px: 0.4, borderRadius: 0.75, backgroundColor: "#fff1f2", color: "#be123c", fontSize: 9.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{call.serviceName}</Box>)}</Stack></Box>; })}</Box></Box>
+        </CardContent></Card>
+        </Stack>
       ) : (
-        <Card sx={{ borderRadius: { xs: 2, md: 3 } }}>
-          <CardContent sx={{ p: { xs: 0.75, md: 1.25 } }}>
-            <Box className="print-area">
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: {
-                    xs: "repeat(2, minmax(0, 1fr))",
-                    sm: "repeat(3, minmax(0, 1fr))",
-                    md: "repeat(4, minmax(0, 1fr))",
-                    lg: "repeat(6, minmax(0, 1fr))",
-                  },
-                  gap: { xs: 0.75, md: 1 },
-                }}
-              >
-                {blockRows.map((row) => {
-                  const style = rotationColor(row.rotation);
-
-                  return (
-                    <Box
-                      key={`${row.block}-${row.startDate}`}
-                      sx={{
-                        minHeight: { xs: 86, md: 96 },
-                        p: { xs: 0.75, md: 1 },
-                        borderRadius: 2,
-                        backgroundColor: style.bg,
-                        border: "1px solid",
-                        borderColor: style.border,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <Typography fontSize={{ xs: 12, md: 13 }} fontWeight={950} sx={{ color: style.color }}>
-                        {row.block.replace("Block ", "B")}
-                      </Typography>
-
-                      <Typography fontSize={{ xs: 10.5, md: 11.5 }} color="text.secondary" sx={{ mb: 0.4 }}>
-                        {shortDate(row.startDate)} to {shortDate(row.endDate)}
-                      </Typography>
-
-                      <Typography
-                        fontSize={{ xs: 12, md: 13 }}
-                        fontWeight={900}
-                        sx={{
-                          color: style.color,
-                          lineHeight: 1.15,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
-                        {row.rotation}
-                      </Typography>
-
-                      {row.notes && (
-                        <Typography
-                          fontSize={10.5}
-                          color="text.secondary"
-                          sx={{
-                            mt: 0.35,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {row.notes}
-                        </Typography>
-                      )}
-                    </Box>
-                  );
-                })}
-              </Box>
-
-              <Box sx={{ mt: 2 }}>
-                <Typography fontWeight={900} fontSize={{ xs: 14, md: 16 }} sx={{ mb: 1 }}>
-                  Block Summary
-                </Typography>
-
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {blockSummary.length > 0 ? (
-                    blockSummary.map(([rotation, count]) => {
-                      const style = rotationColor(rotation);
-
-                      return (
-                        <Chip
-                          key={rotation}
-                          label={`${rotation}: ${count}`}
-                          size="small"
-                          sx={{
-                            height: 23,
-                            fontSize: 11,
-                            fontWeight: 850,
-                            color: style.color,
-                            backgroundColor: style.bg,
-                            border: "1px solid",
-                            borderColor: style.border,
-                          }}
-                        />
-                      );
-                    })
-                  ) : (
-                    <Typography color="text.secondary" fontSize={13}>
-                      No assigned blocks yet.
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
+        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ p: 1 }}><Box className="print-area" sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2,1fr)", sm: "repeat(3,1fr)", md: "repeat(5,1fr)" }, gap: 0.75 }}>{blockRows.map((row) => { const style = rotationColor(row.rotation); return <Box key={`${row.block}-${row.startDate}`} sx={{ minHeight: 90, p: 0.8, borderRadius: 2, backgroundColor: style.bg, border: `1px solid ${style.border}` }}><Typography fontWeight={950} sx={{ color: style.color }}>{row.block.replace("Block ", "B")}</Typography><Typography fontSize={10.5} color="text.secondary">{shortDate(row.startDate)} to {shortDate(row.endDate)}</Typography><Typography fontWeight={900} fontSize={12.5} sx={{ color: style.color, mt: 0.4 }}>{row.rotation}</Typography>{row.activeChief && <Chip label="Active Chief" size="small" sx={{ mt: 0.5, height: 20, fontSize: 9.5, fontWeight: 900, color: "#c2410c", backgroundColor: "#fff7ed", border: "1px solid #fed7aa" }} />}{row.notes && <Typography fontSize={10} color="text.secondary" noWrap>{row.notes}</Typography>}</Box>; })}</Box><Typography fontWeight={900} sx={{ mt: 2, mb: 1 }}>Block Summary</Typography><Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>{blockSummary.map(([rotation, count]) => { const style = rotationColor(rotation); return <Chip key={rotation} label={`${rotation}: ${count}`} size="small" sx={{ color: style.color, backgroundColor: style.bg, border: `1px solid ${style.border}` }} />; })}</Stack></CardContent></Card>
       )}
-
-      <style>
-        {`
-          @media print {
-            body {
-              background: white !important;
-            }
-
-            .no-print {
-              display: none !important;
-            }
-
-            .MuiAppBar-root,
-            .MuiDrawer-root {
-              display: none !important;
-            }
-
-            main {
-              padding: 0 !important;
-              background: white !important;
-            }
-
-            .print-header {
-              box-shadow: none !important;
-              border: none !important;
-            }
-
-            .print-area {
-              overflow: visible !important;
-            }
-          }
-        `}
-      </style>
+      <style>{`@media print {.no-print,.MuiAppBar-root,.MuiDrawer-root{display:none!important}.print-area{overflow:visible!important}main{padding:0!important}}`}</style>
     </Box>
   );
 }
+
+function AcademicYearCallSummary({
+  academicYear,
+  summary,
+}: {
+  academicYear: string;
+  summary: {
+    total: number;
+    nightFloat: number;
+    shortDuty: number;
+    weekend: number;
+    holiday: number;
+    services: Array<{ id: string; label: string; count: number }>;
+  };
+}) {
+  const overview = [
+    ["Total Calls", summary.total],
+    ["Night Float", summary.nightFloat],
+    ["Weekend", summary.weekend],
+    ["Holiday", summary.holiday],
+    ["Short Duty", summary.shortDuty],
+  ] as const;
+
+  return (
+    <Card sx={{ borderRadius: 3 }}>
+      <CardContent sx={{ p: 1.15, "&:last-child": { pb: 1.15 } }}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          justifyContent="space-between"
+          spacing={0.75}
+          sx={{ mb: 0.75 }}
+        >
+          <Box>
+            <Typography fontWeight={900} fontSize={14}>
+              Academic-Year Call Counts
+            </Typography>
+            <Typography color="text.secondary" fontSize={10.5}>
+              {academicYear} · all call types across the full academic year
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap>
+            {overview.map(([label, count]) => (
+              <Chip
+                key={label}
+                label={`${label}: ${count}`}
+                size="small"
+                sx={{
+                  height: 22,
+                  fontSize: 10,
+                  fontWeight: 850,
+                  color: label === "Total Calls" ? "#1d4ed8" : "#334155",
+                  backgroundColor:
+                    label === "Total Calls" ? "#eff6ff" : "#f8fafc",
+                  border: "1px solid",
+                  borderColor:
+                    label === "Total Calls" ? "#bfdbfe" : "#e2e8f0",
+                }}
+              />
+            ))}
+          </Stack>
+        </Stack>
+
+        {summary.services.length ? (
+          <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
+            {summary.services.map((item) => (
+              <Chip
+                key={item.id}
+                label={`${item.label}: ${item.count}`}
+                size="small"
+                sx={{ height: 21, fontSize: 9.75, fontWeight: 800 }}
+              />
+            ))}
+          </Stack>
+        ) : (
+          <Typography color="text.secondary" fontSize={11}>
+            No calls are assigned for this academic year.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+

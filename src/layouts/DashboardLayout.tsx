@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import {
-  Alert,
   AppBar,
   Box,
   Button,
+  CssBaseline,
   Divider,
   Drawer,
   IconButton,
@@ -16,10 +16,11 @@ import {
   Typography,
 } from "@mui/material";
 
-import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
+import MenuIcon from "@mui/icons-material/Menu";
 
-import { getNavItem } from "../config/navigation";
+import { getNavItem, normalizeSidebarSettings } from "../config/navigation";
+import NotificationCenter from "../components/NotificationCenter";
 import { useAuth } from "../context/AuthContext";
 import { useSidebarSettings } from "../hooks/useSidebarSettings";
 import type { AppPage } from "../types/page";
@@ -37,24 +38,35 @@ export default function DashboardLayout({
   onPageChange: (page: AppPage) => void;
 }) {
   const { user, profile, logout } = useAuth();
-  const { settings, error } = useSidebarSettings();
+  const { settings } = useSidebarSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
-
   const isManager = canManageResidents(profile?.role);
 
-  const visibleNavItems = useMemo(
-    () =>
-      settings.items
-        .filter((preference) =>
-          isManager
-            ? preference.visibleToManagers
-            : preference.visibleToStandardUsers
-        )
-        .map((preference) => getNavItem(preference.page))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-        .filter((item) => !item.managerOnly || isManager),
-    [isManager, settings.items]
-  );
+  const navItems = useMemo(() => {
+    const normalized = normalizeSidebarSettings(settings);
+
+    return normalized.items
+      .map((preference) => {
+        const item = getNavItem(preference.page);
+        if (!item) return null;
+
+        const visible = isManager
+          ? preference.visibleToManagers
+          : preference.visibleToStandardUsers;
+
+        if (!visible) return null;
+
+        return {
+          ...item,
+          page: preference.page,
+        };
+      })
+      .filter(Boolean) as Array<{
+      page: AppPage;
+      label: string;
+      icon: React.ReactNode;
+    }>;
+  }, [isManager, settings]);
 
   function handleNavigate(page: AppPage) {
     onPageChange(page);
@@ -64,25 +76,26 @@ export default function DashboardLayout({
   const drawerContent = (
     <>
       <Toolbar />
-
-      <Box sx={{ p: 1.5 }}>
-        <Typography variant="overline" sx={{ color: "rgba(255,255,255,0.62)" }}>
+      <Box sx={{ px: 1.5, py: 0.8 }}>
+        <Typography
+          variant="overline"
+          sx={{ color: "#94a3b8", fontSize: 9, fontWeight: 800 }}
+        >
           Main Menu
         </Typography>
       </Box>
-
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
-
-      <List dense>
-        {visibleNavItems.map((item) => (
+      <List dense sx={{ py: 0.65 }}>
+        {navItems.map((item) => (
           <ListItemButton
             key={item.page}
             selected={item.page === currentPage}
             onClick={() => handleNavigate(item.page)}
             sx={{
-              mx: 1,
-              my: 0.25,
-              py: 0.65,
+              mx: 0.75,
+              my: 0.12,
+              py: 0.45,
+              minHeight: 34,
               borderRadius: 1.5,
               color: "white",
               "&.Mui-selected": {
@@ -91,18 +104,21 @@ export default function DashboardLayout({
               "&.Mui-selected:hover": {
                 backgroundColor: "rgba(255,255,255,0.22)",
               },
-              "&:hover": {
-                backgroundColor: "rgba(255,255,255,0.1)",
-              },
+              "&:hover": { backgroundColor: "rgba(255,255,255,0.1)" },
             }}
           >
-            <ListItemIcon sx={{ color: "inherit", minWidth: 34 }}>
+            <ListItemIcon
+              sx={{
+                color: "inherit",
+                minWidth: 30,
+                "& svg": { fontSize: 18 },
+              }}
+            >
               {item.icon}
             </ListItemIcon>
-
             <ListItemText
               primary={item.label}
-              primaryTypographyProps={{ fontSize: 13 }}
+              primaryTypographyProps={{ fontSize: 11.5, fontWeight: 650 }}
             />
           </ListItemButton>
         ))}
@@ -112,13 +128,13 @@ export default function DashboardLayout({
 
   return (
     <Box sx={{ display: "flex", width: "100%", minWidth: 0 }}>
+      <CssBaseline />
       <AppBar
         position="fixed"
-        color="default"
         sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          borderBottom: "1px solid",
-          borderColor: "divider",
+          backgroundColor: "white",
+          color: "#0f172a",
           boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
         }}
       >
@@ -126,45 +142,39 @@ export default function DashboardLayout({
           sx={{
             justifyContent: "space-between",
             gap: 1,
-            minHeight: { xs: 56, sm: 64 },
-            px: { xs: 1, sm: 2 },
+            minHeight: { xs: 52, sm: 56 },
+            px: { xs: 1, sm: 1.5 },
           }}
         >
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-            <IconButton edge="start" onClick={() => setDrawerOpen(true)}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+            <IconButton edge="start" size="small" onClick={() => setDrawerOpen(true)}>
               <MenuIcon />
             </IconButton>
-
             <Typography
-              variant="h6"
               noWrap
               fontWeight={800}
-              sx={{ fontSize: { xs: 17, sm: 20 } }}
+              sx={{ fontSize: { xs: 15, sm: 17 }, letterSpacing: "-0.02em" }}
             >
               WhosOn
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+            <NotificationCenter uid={user?.uid} residentId={profile?.residentId} onNavigate={handleNavigate} />
             <Box sx={{ textAlign: "right", display: { xs: "none", sm: "block" } }}>
-              <Typography variant="body2" fontWeight={700} noWrap>
+              <Typography fontSize={11.25} fontWeight={700} noWrap>
                 {profile?.displayName || user?.email}
               </Typography>
-
-              <Typography variant="caption" color="text.secondary" noWrap>
+              <Typography fontSize={9.25} color="text.secondary" noWrap>
                 {profile?.role || "User"}
               </Typography>
             </Box>
-
             <Button
               size="small"
               variant="outlined"
               startIcon={<LogoutIcon />}
               onClick={logout}
-              sx={{
-                minWidth: { xs: 40, sm: 90 },
-                px: { xs: 1, sm: 1.5 },
-              }}
+              sx={{ minWidth: { xs: 34, sm: 78 }, px: { xs: 0.75, sm: 1.1 } }}
             >
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
                 Logout
@@ -183,7 +193,7 @@ export default function DashboardLayout({
           [`& .MuiDrawer-paper`]: {
             width: drawerWidth,
             boxSizing: "border-box",
-            backgroundColor: (theme) => theme.palette.primary.dark,
+            backgroundColor: "#0f172a",
             color: "white",
           },
         }}
@@ -199,19 +209,12 @@ export default function DashboardLayout({
           width: "100%",
           maxWidth: "100vw",
           minHeight: "100vh",
-          backgroundColor: "background.default",
-          p: { xs: 1, sm: 1.5, md: 2 },
+          backgroundColor: "#f8fafc",
+          p: { xs: 0.75, sm: 1, md: 1.25 },
           overflowX: "hidden",
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
-
-        {error && isManager && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-
+        <Toolbar sx={{ minHeight: { xs: 52, sm: 56 } }} />
         <Box sx={{ width: "100%", minWidth: 0 }}>{children}</Box>
       </Box>
     </Box>

@@ -1,0 +1,36 @@
+// MERGE these helpers and match rules into your existing firestore.rules.
+// Do not replace the complete file blindly.
+
+function signedIn() {
+  return request.auth != null;
+}
+
+function currentUser() {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+}
+
+function isManager() {
+  return signedIn() &&
+    currentUser().role in ["Admin", "Chief Resident", "Program Coordinator"];
+}
+
+match /users/{uid} {
+  allow update: if isManager() ||
+    (signedIn() && request.auth.uid == uid &&
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["displayName", "phone", "updatedAt"]));
+}
+
+match /residents/{residentId} {
+  allow update: if isManager() ||
+    (signedIn() && currentUser().residentId == residentId &&
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["firstName", "lastName", "displayName", "phone", "pager", "updatedAt"]));
+}
+
+match /attendings/{attendingId} {
+  allow update: if isManager() ||
+    (signedIn() && currentUser().attendingId == attendingId &&
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["firstName", "lastName", "displayName", "phone", "pager", "updatedAt"]));
+}

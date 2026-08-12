@@ -1,0 +1,40 @@
+import type { Resident } from "../types/resident";
+
+export const sampleResidents: Resident[] = [
+  {
+    id: "sayyar",
+    firstName: "Moha",
+    lastName: "Sayyar",
+    displayName: "Sayyar",
+    email: "docsayyar@gmail.com",
+    pager: "11170",
+    phone: "",
+    pgy: "PGY-2",
+    role: "Resident",
+    active: true,
+  },
+  {
+    id: "rahman",
+    firstName: "Rahman",
+    lastName: "",
+    displayName: "Rahman",
+    email: "",
+    pager: "541",
+    phone: "",
+    pgy: "PGY-3",
+    role: "Resident",
+    active: true,
+  },
+  {
+    id: "alhashimi",
+    firstName: "Al",
+    lastName: "Hashimi",
+    displayName: "Al-Hashimi",
+    email: "",
+    pager: "534",
+    phone: "",
+    pgy: "PGY-3",
+    role: "Chief Resident",
+    active: true,
+  },
+];

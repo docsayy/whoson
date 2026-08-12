@@ -8,21 +8,27 @@ import {
   CircularProgress,
   Divider,
   FormControl,
-  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
   Select,
   Stack,
   Switch,
+  Tab,
+  Tabs,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import LockResetIcon from "@mui/icons-material/LockReset";
+import PersonIcon from "@mui/icons-material/Person";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SaveIcon from "@mui/icons-material/Save";
+import SecurityIcon from "@mui/icons-material/Security";
+import TuneIcon from "@mui/icons-material/Tune";
 
 import {
   THEME_COLOR_OPTIONS,
@@ -33,35 +39,68 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useSidebarSettings } from "../hooks/useSidebarSettings";
 import {
+  getMyAccountDetails,
+  saveMyAccountDetails,
+  type MyAccountDetails,
+} from "../services/accountService";
+import {
   restoreDefaultSidebarSettings,
   saveSidebarSettings,
 } from "../services/sidebarSettingsService";
-import type {
-  AppThemeMode,
-  SidebarSettings,
-} from "../types/sidebarSettings";
+import type { AppThemeMode, SidebarSettings } from "../types/sidebarSettings";
 import { canManageResidents } from "../utils/permissions";
 
+type SettingsTab = "profile" | "security" | "interface";
 type Audience = "standard" | "manager";
 
-export default function SettingsPage() {
-  const { user, profile } = useAuth();
-  const { settings, loading, error } = useSidebarSettings();
+const emptyAccount: MyAccountDetails = {
+  firstName: "",
+  lastName: "",
+  displayName: "",
+  email: "",
+  phone: "",
+  pager: "",
+  linkedType: "user",
+};
 
+export default function SettingsPage() {
+  const { user, profile, resetPassword, refreshProfile } = useAuth();
+  const { settings, loading: settingsLoading, error: settingsError } =
+    useSidebarSettings();
+  const canManage = canManageResidents(profile?.role);
+
+  const [tab, setTab] = useState<SettingsTab>("profile");
+  const [account, setAccount] = useState<MyAccountDetails>(emptyAccount);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountSaving, setAccountSaving] = useState(false);
   const [draft, setDraft] = useState<SidebarSettings>(
     createDefaultSidebarSettings()
   );
-  const [saving, setSaving] = useState(false);
+  const [interfaceSaving, setInterfaceSaving] = useState(false);
   const [message, setMessage] = useState<{
-    severity: "success" | "error";
+    severity: "success" | "error" | "info";
     text: string;
   } | null>(null);
-
-  const canManage = canManageResidents(profile?.role);
 
   useEffect(() => {
     setDraft(normalizeSidebarSettings(settings));
   }, [settings]);
+
+  useEffect(() => {
+    async function loadAccount() {
+      if (!profile) return;
+      try {
+        setAccountLoading(true);
+        setAccount(await getMyAccountDetails(profile));
+      } catch (error) {
+        console.error(error);
+        setMessage({ severity: "error", text: "Unable to load your profile." });
+      } finally {
+        setAccountLoading(false);
+      }
+    }
+    void loadAccount();
+  }, [profile]);
 
   const counts = useMemo(
     () => ({
@@ -71,461 +110,471 @@ export default function SettingsPage() {
     [draft.items]
   );
 
-  function moveItem(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-
-    if (targetIndex < 0 || targetIndex >= draft.items.length) {
-      return;
+  async function saveAccount() {
+    if (!profile) return;
+    try {
+      setAccountSaving(true);
+      setMessage(null);
+      await saveMyAccountDetails(profile, account);
+      await refreshProfile();
+      setMessage({
+        severity: "success",
+        text: "Your profile was updated. The current name, phone, and pager will be used throughout WhosOn.",
+      });
+    } catch (error) {
+      console.error(error);
+      setMessage({
+        severity: "error",
+        text: error instanceof Error ? error.message : "Unable to update profile.",
+      });
+    } finally {
+      setAccountSaving(false);
     }
+  }
 
+  async function sendResetEmail() {
+    const email = profile?.email || user?.email || "";
+    if (!email) return;
+    try {
+      await resetPassword(email);
+      setMessage({
+        severity: "success",
+        text: `Password-reset email sent to ${email}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      setMessage({ severity: "error", text: "Unable to send reset email." });
+    }
+  }
+
+  function moveItem(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= draft.items.length) return;
     setDraft((current) => {
       const items = [...current.items];
-      const [movedItem] = items.splice(index, 1);
-      items.splice(targetIndex, 0, movedItem);
-
-      return {
-        ...current,
-        items,
-      };
+      const [moved] = items.splice(index, 1);
+      items.splice(target, 0, moved);
+      return { ...current, items };
     });
-
-    setMessage(null);
   }
 
   function toggleVisibility(index: number, audience: Audience) {
     const preference = draft.items[index];
     const navItem = getNavItem(preference.page);
-
-    if (!navItem) {
-      return;
-    }
-
-    if (audience === "standard" && navItem.managerOnly) {
-      return;
-    }
-
-    if (audience === "manager" && navItem.requiredForManagers) {
-      return;
-    }
+    if (!navItem) return;
+    if (audience === "standard" && navItem.managerOnly) return;
+    if (audience === "manager" && navItem.requiredForManagers) return;
 
     setDraft((current) => ({
       ...current,
-      items: current.items.map((item, itemIndex) => {
-        if (itemIndex !== index) {
-          return item;
-        }
-
-        return audience === "standard"
-          ? {
-              ...item,
-              visibleToStandardUsers: !item.visibleToStandardUsers,
-            }
-          : {
-              ...item,
-              visibleToManagers: !item.visibleToManagers,
-            };
-      }),
+      items: current.items.map((item, itemIndex) =>
+        itemIndex !== index
+          ? item
+          : audience === "standard"
+            ? {
+                ...item,
+                visibleToStandardUsers: !item.visibleToStandardUsers,
+              }
+            : { ...item, visibleToManagers: !item.visibleToManagers }
+      ),
     }));
-
-    setMessage(null);
   }
 
-  function updateThemeMode(mode: AppThemeMode) {
-    setDraft((current) => ({
-      ...current,
-      theme: {
-        ...current.theme,
-        mode,
-      },
-    }));
-    setMessage(null);
-  }
-
-  function updatePrimaryColor(primaryColor: string) {
-    setDraft((current) => ({
-      ...current,
-      theme: {
-        ...current.theme,
-        primaryColor,
-      },
-    }));
-    setMessage(null);
-  }
-
-  async function handleSave() {
-    if (!user || !canManage) {
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-
+  async function saveInterface() {
+    if (!user || !canManage) return;
     try {
+      setInterfaceSaving(true);
       await saveSidebarSettings(draft, user.uid);
       setMessage({
         severity: "success",
-        text: "Sidebar visibility, page order, and theme were saved for the entire app.",
+        text: "Sidebar order, visibility, and theme were saved for the app.",
       });
-    } catch (saveError) {
-      console.error("Unable to save interface settings:", saveError);
-      setMessage({
-        severity: "error",
-        text: "The settings could not be saved. Check your Firestore permissions and try again.",
-      });
+    } catch (error) {
+      console.error(error);
+      setMessage({ severity: "error", text: "Unable to save app settings." });
     } finally {
-      setSaving(false);
+      setInterfaceSaving(false);
     }
   }
 
-  async function handleRestoreDefaults() {
-    if (!user || !canManage) {
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-
+  async function restoreDefaults() {
+    if (!user || !canManage) return;
     try {
+      setInterfaceSaving(true);
       await restoreDefaultSidebarSettings(user.uid);
-      setMessage({
-        severity: "success",
-        text: "The default sidebar order, visibility, and theme were restored.",
-      });
-    } catch (restoreError) {
-      console.error("Unable to restore interface settings:", restoreError);
-      setMessage({
-        severity: "error",
-        text: "The default settings could not be restored.",
-      });
+      setMessage({ severity: "success", text: "Default interface restored." });
+    } catch (error) {
+      console.error(error);
+      setMessage({ severity: "error", text: "Unable to restore defaults." });
     } finally {
-      setSaving(false);
+      setInterfaceSaving(false);
     }
   }
 
-  if (!canManage) {
-    return (
-      <Alert severity="error">
-        You do not have permission to manage application settings.
-      </Alert>
-    );
-  }
+  const visibleTabs: SettingsTab[] = canManage
+    ? ["profile", "security", "interface"]
+    : ["profile", "security"];
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          minHeight: 240,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) setTab("profile");
+  }, [canManage, tab]);
 
   return (
-    <Box sx={{ width: "100%", maxWidth: 1050, mx: "auto" }}>
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        justifyContent="space-between"
-        alignItems={{ xs: "stretch", md: "flex-start" }}
-        spacing={2}
-        sx={{ mb: 2 }}
-      >
-        <Box>
-          <Typography variant="h4" fontWeight={800}>
-            Settings
-          </Typography>
-
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Control page visibility by user group, sidebar order, and the
-            application theme.
-          </Typography>
-        </Box>
-
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-          <Button
-            variant="outlined"
-            startIcon={<RestartAltIcon />}
-            onClick={handleRestoreDefaults}
-            disabled={saving}
-          >
-            Restore defaults
-          </Button>
-
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            Save all settings
-          </Button>
-        </Stack>
-      </Stack>
-
-      {error && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
+    <Box sx={{ width: "100%", maxWidth: 1080, mx: "auto" }}>
+      <Box sx={{ mb: 1.25 }}>
+        <Typography variant="h4">Settings</Typography>
+        <Typography color="text.secondary" fontSize={12.5}>
+          Maintain your profile and security. Managers can also control the
+          shared app interface.
+        </Typography>
+      </Box>
 
       {message && (
-        <Alert severity={message.severity} sx={{ mb: 2 }}>
+        <Alert
+          severity={message.severity}
+          onClose={() => setMessage(null)}
+          sx={{ mb: 1.25 }}
+        >
           {message.text}
         </Alert>
       )}
 
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Typography variant="h6" fontWeight={800}>
-            Color theme
-          </Typography>
-
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            These colors apply globally to all users and devices.
-          </Typography>
-
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={3}
-            sx={{ mt: 2 }}
-          >
-            <FormControl sx={{ minWidth: 180 }}>
-              <InputLabel id="theme-mode-label">Appearance</InputLabel>
-              <Select
-                labelId="theme-mode-label"
-                label="Appearance"
-                value={draft.theme.mode}
-                onChange={(event) =>
-                  updateThemeMode(event.target.value as AppThemeMode)
-                }
-                disabled={saving}
-              >
-                <MenuItem value="light">Light</MenuItem>
-                <MenuItem value="dark">Dark</MenuItem>
-              </Select>
-            </FormControl>
-
-            <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>
-                Main accent color
-              </Typography>
-
-              <Stack direction="row" flexWrap="wrap" gap={1}>
-                {THEME_COLOR_OPTIONS.map((option) => {
-                  const selected =
-                    draft.theme.primaryColor.toLowerCase() ===
-                    option.value.toLowerCase();
-
-                  return (
-                    <Tooltip title={option.label} key={option.value}>
-                      <Button
-                        type="button"
-                        aria-label={`Use ${option.label} theme`}
-                        onClick={() => updatePrimaryColor(option.value)}
-                        disabled={saving}
-                        sx={{
-                          minWidth: 44,
-                          width: 44,
-                          height: 44,
-                          p: 0,
-                          borderRadius: "50%",
-                          backgroundColor: option.value,
-                          border: selected
-                            ? "4px solid"
-                            : "2px solid transparent",
-                          borderColor: selected
-                            ? "text.primary"
-                            : "transparent",
-                          boxShadow: selected ? 3 : 0,
-                          "&:hover": {
-                            backgroundColor: option.value,
-                            opacity: 0.88,
-                          },
-                        }}
-                      />
-                    </Tooltip>
-                  );
-                })}
-              </Stack>
-            </Box>
-          </Stack>
-        </CardContent>
+      <Card variant="outlined" sx={{ mb: 1.25 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, value: SettingsTab) => setTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab icon={<PersonIcon />} iconPosition="start" label="My Profile" value="profile" />
+          <Tab icon={<SecurityIcon />} iconPosition="start" label="Security" value="security" />
+          {canManage && (
+            <Tab icon={<TuneIcon />} iconPosition="start" label="App Interface" value="interface" />
+          )}
+        </Tabs>
       </Card>
 
-      <Card variant="outlined">
-        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            justifyContent="space-between"
-            spacing={1}
-            sx={{ mb: 1.5 }}
-          >
-            <Box>
-              <Typography variant="h6" fontWeight={800}>
-                Sidebar pages
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary">
-                Page order is shared. Visibility is controlled separately for
-                each user group.
-              </Typography>
-            </Box>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={{ xs: 0, sm: 2 }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                Standard users: {counts.standard} visible
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Managers: {counts.manager} visible
-              </Typography>
-            </Stack>
-          </Stack>
-
-          <Divider />
-
-          <Stack spacing={1} sx={{ mt: 1.5 }}>
-            {draft.items.map((preference, index) => {
-              const navItem = getNavItem(preference.page);
-
-              if (!navItem) {
-                return null;
-              }
-
-              return (
+      {tab === "profile" && (
+        <Card variant="outlined">
+          <CardContent>
+            {accountLoading ? (
+              <Stack alignItems="center" sx={{ py: 5 }}>
+                <CircularProgress size={28} />
+              </Stack>
+            ) : (
+              <Stack spacing={1.25}>
+                <Box>
+                  <Typography variant="h6">My Profile</Typography>
+                  <Typography color="text.secondary" fontSize={11.5}>
+                    Linked {account.linkedType} profile. Changes are written to
+                    the canonical person record so updated details appear across
+                    schedules and profiles.
+                  </Typography>
+                </Box>
+                <Divider />
                 <Box
-                  key={preference.page}
                   sx={{
                     display: "grid",
-                    gridTemplateColumns: {
-                      xs: "auto minmax(0, 1fr)",
-                      md: "auto minmax(220px, 1fr) 210px 240px",
-                    },
-                    alignItems: "center",
-                    gap: { xs: 0.5, md: 1 },
-                    p: 1,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 2,
+                    gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                    gap: 1,
                   }}
                 >
-                  <Stack direction="row" spacing={0.25}>
-                    <Tooltip title="Move up">
-                      <span>
-                        <IconButton
-                          size="small"
-                          onClick={() => moveItem(index, -1)}
-                          disabled={index === 0 || saving}
-                        >
-                          <ArrowUpwardIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-
-                    <Tooltip title="Move down">
-                      <span>
-                        <IconButton
-                          size="small"
-                          onClick={() => moveItem(index, 1)}
-                          disabled={
-                            index === draft.items.length - 1 || saving
-                          }
-                        >
-                          <ArrowDownwardIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </Stack>
-
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                    sx={{ minWidth: 0 }}
-                  >
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        color: "text.secondary",
-                      }}
-                    >
-                      {navItem.icon}
-                    </Box>
-
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography fontWeight={700} noWrap>
-                        {navItem.label}
-                      </Typography>
-
-                      {navItem.managerOnly && (
-                        <Typography variant="caption" color="text.secondary">
-                          Management page
-                        </Typography>
-                      )}
-                    </Box>
-                  </Stack>
-
-                  <FormControlLabel
-                    sx={{
-                      m: 0,
-                      gridColumn: { xs: "2", md: "auto" },
-                    }}
-                    control={
-                      <Switch
-                        checked={preference.visibleToStandardUsers}
-                        onChange={() => toggleVisibility(index, "standard")}
-                        disabled={navItem.managerOnly || saving}
-                      />
+                  <TextField
+                    size="small"
+                    label="First name"
+                    value={account.firstName}
+                    onChange={(event) =>
+                      setAccount({ ...account, firstName: event.target.value })
                     }
-                    label={
-                      navItem.managerOnly
-                        ? "Residents: unavailable"
-                        : preference.visibleToStandardUsers
-                          ? "Residents: shown"
-                          : "Residents: hidden"
+                    disabled={account.linkedType === "user"}
+                  />
+                  <TextField
+                    size="small"
+                    label="Last name"
+                    value={account.lastName}
+                    onChange={(event) =>
+                      setAccount({ ...account, lastName: event.target.value })
+                    }
+                    disabled={account.linkedType === "user"}
+                  />
+                  <TextField
+                    size="small"
+                    required
+                    label="Display name"
+                    value={account.displayName}
+                    onChange={(event) =>
+                      setAccount({ ...account, displayName: event.target.value })
                     }
                   />
-
-                  <FormControlLabel
-                    sx={{
-                      m: 0,
-                      gridColumn: { xs: "2", md: "auto" },
-                    }}
-                    control={
-                      <Switch
-                        checked={preference.visibleToManagers}
-                        onChange={() => toggleVisibility(index, "manager")}
-                        disabled={navItem.requiredForManagers || saving}
-                      />
+                  <TextField size="small" label="Email" value={account.email} disabled />
+                  <TextField
+                    size="small"
+                    label="Phone"
+                    value={account.phone}
+                    onChange={(event) =>
+                      setAccount({ ...account, phone: event.target.value })
                     }
-                    label={
-                      navItem.requiredForManagers
-                        ? "Managers: required"
-                        : preference.visibleToManagers
-                          ? "Managers: shown"
-                          : "Managers: hidden"
+                  />
+                  <TextField
+                    size="small"
+                    label="Pager"
+                    value={account.pager}
+                    onChange={(event) =>
+                      setAccount({ ...account, pager: event.target.value })
                     }
+                    disabled={account.linkedType === "user"}
                   />
                 </Box>
-              );
-            })}
-          </Stack>
-        </CardContent>
-      </Card>
+                <Button
+                  variant="contained"
+                  startIcon={
+                    accountSaving ? <CircularProgress size={16} /> : <SaveIcon />
+                  }
+                  disabled={accountSaving || !account.displayName.trim()}
+                  onClick={saveAccount}
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  Save Profile
+                </Button>
+              </Stack>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      <Alert severity="info" sx={{ mt: 2 }}>
-        “Managers” means admin, chief resident, and program coordinator.
-        “Standard users” includes residents, attendings, and other signed-in
-        users. Hiding a page only removes its sidebar link; route permissions
-        remain separate.
-      </Alert>
+      {tab === "security" && (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1.25}>
+              <Box>
+                <Typography variant="h6">Password & Account Security</Typography>
+                <Typography color="text.secondary" fontSize={11.5}>
+                  WhosOn never displays or stores your existing password.
+                </Typography>
+              </Box>
+              <Divider />
+              <Box>
+                <Typography fontWeight={800} fontSize={12.5}>
+                  Signed-in email
+                </Typography>
+                <Typography color="text.secondary" fontSize={12}>
+                  {profile?.email || user?.email || "—"}
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                startIcon={<LockResetIcon />}
+                onClick={sendResetEmail}
+                sx={{ alignSelf: "flex-start" }}
+              >
+                Email Me a Password-Reset Link
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "interface" && canManage && (
+        <Stack spacing={1.25}>
+          {settingsError && <Alert severity="warning">{settingsError}</Alert>}
+          {settingsLoading ? (
+            <Stack alignItems="center" sx={{ py: 5 }}>
+              <CircularProgress size={28} />
+            </Stack>
+          ) : (
+            <>
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    justifyContent="space-between"
+                    spacing={1}
+                  >
+                    <Box>
+                      <Typography variant="h6">Theme</Typography>
+                      <Typography color="text.secondary" fontSize={11.5}>
+                        Shared across users and devices.
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.75}>
+                      <Button
+                        variant="outlined"
+                        startIcon={<RestartAltIcon />}
+                        onClick={restoreDefaults}
+                        disabled={interfaceSaving}
+                      >
+                        Restore Defaults
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<SaveIcon />}
+                        onClick={saveInterface}
+                        disabled={interfaceSaving}
+                      >
+                        Save App Settings
+                      </Button>
+                    </Stack>
+                  </Stack>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={2}
+                    sx={{ mt: 1.25 }}
+                  >
+                    <FormControl size="small" sx={{ minWidth: 170 }}>
+                      <InputLabel>Appearance</InputLabel>
+                      <Select
+                        label="Appearance"
+                        value={draft.theme.mode}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            theme: {
+                              ...current.theme,
+                              mode: event.target.value as AppThemeMode,
+                            },
+                          }))
+                        }
+                      >
+                        <MenuItem value="light">Light</MenuItem>
+                        <MenuItem value="dark">Dark</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Box>
+                      <Typography fontWeight={800} fontSize={11.5} sx={{ mb: 0.6 }}>
+                        Accent color
+                      </Typography>
+                      <Stack direction="row" flexWrap="wrap" gap={0.6}>
+                        {THEME_COLOR_OPTIONS.map((option) => {
+                          const selected =
+                            draft.theme.primaryColor.toLowerCase() ===
+                            option.value.toLowerCase();
+                          return (
+                            <Tooltip title={option.label} key={option.value}>
+                              <Button
+                                aria-label={`Use ${option.label}`}
+                                onClick={() =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    theme: {
+                                      ...current.theme,
+                                      primaryColor: option.value,
+                                    },
+                                  }))
+                                }
+                                sx={{
+                                  minWidth: 34,
+                                  width: 34,
+                                  height: 34,
+                                  p: 0,
+                                  borderRadius: "50%",
+                                  backgroundColor: option.value,
+                                  border: selected
+                                    ? "3px solid currentColor"
+                                    : "2px solid transparent",
+                                  "&:hover": { backgroundColor: option.value },
+                                }}
+                              />
+                            </Tooltip>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    spacing={0.5}
+                    sx={{ mb: 1 }}
+                  >
+                    <Box>
+                      <Typography variant="h6">Sidebar Pages</Typography>
+                      <Typography color="text.secondary" fontSize={11.5}>
+                        The saved order is the exact order rendered in the left menu.
+                      </Typography>
+                    </Box>
+                    <Typography color="text.secondary" fontSize={11}>
+                      Standard: {counts.standard} · Managers: {counts.manager}
+                    </Typography>
+                  </Stack>
+                  <Divider />
+                  <Stack spacing={0.6} sx={{ mt: 1 }}>
+                    {draft.items.map((preference, index) => {
+                      const navItem = getNavItem(preference.page);
+                      if (!navItem) return null;
+                      return (
+                        <Box
+                          key={preference.page}
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: {
+                              xs: "auto 1fr",
+                              md: "80px minmax(190px,1fr) 180px 180px",
+                            },
+                            alignItems: "center",
+                            gap: 0.5,
+                            p: 0.65,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 1.5,
+                          }}
+                        >
+                          <Stack direction="row" spacing={0}>
+                            <IconButton
+                              size="small"
+                              onClick={() => moveItem(index, -1)}
+                              disabled={index === 0}
+                            >
+                              <ArrowUpwardIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => moveItem(index, 1)}
+                              disabled={index === draft.items.length - 1}
+                            >
+                              <ArrowDownwardIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                          <Stack direction="row" spacing={0.75} alignItems="center">
+                            <Box sx={{ color: "text.secondary", display: "flex" }}>
+                              {navItem.icon}
+                            </Box>
+                            <Typography fontWeight={800} fontSize={12}>
+                              {navItem.label}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" alignItems="center">
+                            <Switch
+                              size="small"
+                              checked={preference.visibleToStandardUsers}
+                              onChange={() => toggleVisibility(index, "standard")}
+                              disabled={Boolean(navItem.managerOnly)}
+                            />
+                            <Typography fontSize={10.5}>Standard</Typography>
+                          </Stack>
+                          <Stack direction="row" alignItems="center">
+                            <Switch
+                              size="small"
+                              checked={preference.visibleToManagers}
+                              onChange={() => toggleVisibility(index, "manager")}
+                              disabled={Boolean(navItem.requiredForManagers)}
+                            />
+                            <Typography fontSize={10.5}>Managers</Typography>
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </Stack>
+      )}
     </Box>
   );
 }

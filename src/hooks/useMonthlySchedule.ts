@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   getMonthlySchedule,
+  peekMonthlySchedule,
   saveMonthlySchedule,
 } from "../services/monthScheduleService";
+import { shouldRefreshThisSession } from "../services/dataCache";
 import type {
   MonthlySchedule,
   MonthlyScheduleCell,
@@ -11,14 +13,11 @@ import type {
 function getAcademicYearForMonth(monthId: string) {
   const year = Number(monthId.slice(0, 4));
   const month = Number(monthId.slice(5, 7));
-
-  if (month >= 7) return `${year}-${year + 1}`;
-  return `${year - 1}-${year}`;
+  return month >= 7 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
 }
 
 function createEmptyMonthlySchedule(monthId: string): MonthlySchedule {
   const now = new Date().toISOString();
-
   return {
     id: monthId,
     academicYear: getAcademicYearForMonth(monthId),
@@ -31,28 +30,25 @@ function createEmptyMonthlySchedule(monthId: string): MonthlySchedule {
 }
 
 export function useMonthlySchedule(monthId: string) {
-  const [schedule, setSchedule] = useState<MonthlySchedule | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = peekMonthlySchedule(monthId);
+  const [schedule, setSchedule] = useState<MonthlySchedule | null>(
+    cached === undefined ? null : cached || createEmptyMonthlySchedule(monthId)
+  );
+  const [loading, setLoading] = useState(cached === undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadSchedule() {
+  async function loadSchedule(force = false, quiet = false) {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       setError("");
-
-      const existing = await getMonthlySchedule(monthId);
-
-      if (existing) {
-        setSchedule(existing);
-      } else {
-        setSchedule(createEmptyMonthlySchedule(monthId));
-      }
+      const existing = await getMonthlySchedule(monthId, force);
+      setSchedule(existing || createEmptyMonthlySchedule(monthId));
     } catch (err) {
       console.error(err);
-      setError("Unable to load monthly schedule.");
+      if (!schedule) setError("Unable to load monthly schedule.");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
@@ -60,12 +56,10 @@ export function useMonthlySchedule(monthId: string) {
     try {
       setSaving(true);
       setError("");
-
       const updated: MonthlySchedule = {
         ...nextSchedule,
         updatedAt: new Date().toISOString(),
       };
-
       await saveMonthlySchedule(updated);
       setSchedule(updated);
     } catch (err) {
@@ -78,33 +72,33 @@ export function useMonthlySchedule(monthId: string) {
 
   async function updateCell(cell: MonthlyScheduleCell) {
     if (!schedule) return;
-
     const key = `${cell.date}_${cell.serviceId}`;
-
     await saveSchedule({
       ...schedule,
-      assignments: {
-        ...schedule.assignments,
-        [key]: cell,
-      },
+      assignments: { ...schedule.assignments, [key]: cell },
     });
   }
 
   async function removeCell(date: string, serviceId: string) {
     if (!schedule) return;
-
     const key = `${date}_${serviceId}`;
     const nextAssignments = { ...schedule.assignments };
     delete nextAssignments[key];
-
-    await saveSchedule({
-      ...schedule,
-      assignments: nextAssignments,
-    });
+    await saveSchedule({ ...schedule, assignments: nextAssignments });
   }
 
   useEffect(() => {
-    loadSchedule();
+    const currentCached = peekMonthlySchedule(monthId);
+    if (currentCached !== undefined) {
+      setSchedule(currentCached || createEmptyMonthlySchedule(monthId));
+      setLoading(false);
+    } else {
+      setSchedule(null);
+      setLoading(true);
+    }
+    const force = shouldRefreshThisSession(`monthly-schedule:${monthId}`);
+    void loadSchedule(force, currentCached !== undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthId]);
 
   return {
@@ -112,7 +106,7 @@ export function useMonthlySchedule(monthId: string) {
     loading,
     saving,
     error,
-    reloadSchedule: loadSchedule,
+    reloadSchedule: () => loadSchedule(true),
     saveSchedule,
     updateCell,
     removeCell,

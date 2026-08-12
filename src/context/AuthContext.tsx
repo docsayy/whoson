@@ -6,12 +6,11 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { auth } from "../config/firebase";
-import { getInviteByCode, markInviteUsed } from "../services/inviteService";
+import { completeInviteSignup, getInviteByCode } from "../services/inviteService";
 import {
-  createUserProfile,
   ensureSuperAdminProfile,
   getUserProfile,
   updateUserLoginState,
@@ -36,6 +35,7 @@ type AuthContextValue = {
   resetPassword: (email: string) => Promise<void>;
   resendVerification: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -63,24 +63,18 @@ function withLoginState(profile: UserProfile): UserProfile {
 
 async function safeUpdateLoginState(uid: string, updatedProfile: UserProfile) {
   try {
+    const storageKey = `whoson:last-login-write:${uid}`;
+    const previous = Number(localStorage.getItem(storageKey) || 0);
+    const sixHours = 6 * 60 * 60 * 1000;
+    if (Date.now() - previous < sixHours) return;
+
     await updateUserLoginState(uid, {
       emailVerified: true,
       lastLogin: updatedProfile.lastLogin,
     });
+    localStorage.setItem(storageKey, String(Date.now()));
   } catch (err) {
     console.warn("Unable to update login timestamp.", err);
-  }
-}
-
-async function safeMarkInviteUsed(params: {
-  code: string;
-  uid: string;
-  email: string;
-}) {
-  try {
-    await markInviteUsed(params);
-  } catch (err) {
-    console.warn("Account profile was created, but invite could not be marked used.", err);
   }
 }
 
@@ -103,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const signupInProgressRef = useRef(false);
 
   async function login(email: string, password: string) {
     const cleanEmail = normalizeEmail(email);
@@ -153,50 +148,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!cleanCode) throw new Error("Please enter your invite code.");
     if (!params.phone.trim()) throw new Error("Please enter your phone number.");
 
-    const invite = await getInviteByCode(cleanCode);
-
-    let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
+    // Confirm the code before creating/signing in the Firebase Auth account.
+    await getInviteByCode(cleanCode);
+    signupInProgressRef.current = true;
 
     try {
-      credential = await createUserWithEmailAndPassword(
-        auth,
-        cleanEmail,
-        params.password
-      );
+      let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
+
+      try {
+        credential = await createUserWithEmailAndPassword(
+          auth,
+          cleanEmail,
+          params.password
+        );
+      } catch (err) {
+        if (!isEmailAlreadyInUse(err)) throw err;
+
+        credential = await signInWithEmailAndPassword(
+          auth,
+          cleanEmail,
+          params.password
+        );
+      }
+
+      const userProfile = await completeInviteSignup({
+        code: cleanCode,
+        uid: credential.user.uid,
+        email: cleanEmail,
+        phone: params.phone.trim(),
+      });
+
+      setUser(credential.user);
+      setProfile(withLoginState(userProfile));
     } catch (err) {
-      if (!isEmailAlreadyInUse(err)) throw err;
-
-      credential = await signInWithEmailAndPassword(
-        auth,
-        cleanEmail,
-        params.password
-      );
+      await signOut(auth).catch(() => undefined);
+      setUser(null);
+      setProfile(null);
+      throw err;
+    } finally {
+      signupInProgressRef.current = false;
     }
-
-    const userProfile = await createUserProfile({
-      uid: credential.user.uid,
-      email: cleanEmail,
-      displayName: invite.displayName,
-      role: invite.role,
-      residentId: invite.residentId,
-      attendingId: invite.attendingId,
-      phone: params.phone.trim(),
-      inviteCode: cleanCode,
-      emailVerified: true,
-    });
-
-    await safeMarkInviteUsed({
-      code: cleanCode,
-      uid: credential.user.uid,
-      email: cleanEmail,
-    });
-
-    const updatedProfile = withLoginState(userProfile);
-
-    await safeUpdateLoginState(credential.user.uid, updatedProfile);
-
-    setUser(credential.user);
-    setProfile(updatedProfile);
   }
 
   async function resetPassword(email: string) {
@@ -209,6 +200,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, cleanEmail, password);
     await signOut(auth);
     throw new Error("Email verification is not required for WhosOn signup.");
+  }
+
+
+  async function refreshProfile() {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      setUser(null);
+      setProfile(null);
+      return;
+    }
+
+    const userProfile = await loadUsableProfile(firebaseUser);
+    if (!userProfile || !userProfile.active || !userProfile.approved) {
+      throw new Error("Your WhosOn profile is unavailable or inactive.");
+    }
+
+    setUser(firebaseUser);
+    setProfile(withLoginState(userProfile));
   }
 
   async function logout() {
@@ -225,6 +234,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!firebaseUser) {
           setUser(null);
           setProfile(null);
+          return;
+        }
+
+        // Firebase emits an auth-state event immediately after account creation,
+        // before the invite transaction has created the Firestore profile.
+        if (signupInProgressRef.current) {
+          setLoading(false);
           return;
         }
 
@@ -267,6 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         resetPassword,
         resendVerification,
         logout,
+        refreshProfile,
       }}
     >
       {children}

@@ -1,0 +1,17 @@
+Add this inside your existing `match /databases/{database}/documents { ... }` block.
+Do not replace your entire rules file with only this snippet.
+
+match /calendarSubscriptions/{userId} {
+  allow read: if request.auth != null
+    && request.auth.uid == userId;
+
+  allow create, update: if request.auth != null
+    && request.auth.uid == userId
+    && request.resource.data.uid == userId;
+
+  allow delete: if false;
+}
+
+The calendar Cloud Function uses the Admin SDK and is not restricted by client Firestore rules.
+The raw token is a bearer secret. Only the owning user should be able to read the document.
+The Cloud Function re-reads the current `users/{uid}` profile before producing a feed and does not trust a client-supplied role, resident ID, or attending ID for authorization.

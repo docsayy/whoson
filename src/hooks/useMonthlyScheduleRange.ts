@@ -1,0 +1,181 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  getMonthlySchedules,
+  peekMonthlySchedule,
+  saveMonthlySchedule,
+  saveMonthlySchedules,
+} from "../services/monthScheduleService";
+import { shouldRefreshThisSession } from "../services/dataCache";
+import type { MonthlySchedule, MonthlyScheduleCell } from "../types/monthSchedule";
+import { publishPublicWhoOnMonths } from "../services/publicWhosOnService";
+
+function academicYearForMonth(monthId: string) {
+  const year = Number(monthId.slice(0, 4));
+  const month = Number(monthId.slice(5, 7));
+  return month >= 7 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+}
+
+function emptySchedule(monthId: string): MonthlySchedule {
+  const now = new Date().toISOString();
+  return {
+    id: monthId,
+    academicYear: academicYearForMonth(monthId),
+    month: monthId,
+    status: "draft",
+    assignments: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function cachedSchedules(monthIds: string[]) {
+  const next: Record<string, MonthlySchedule> = {};
+  let found = false;
+  for (const monthId of monthIds) {
+    const cached = peekMonthlySchedule(monthId);
+    if (cached !== undefined) {
+      next[monthId] = cached || emptySchedule(monthId);
+      found = true;
+    }
+  }
+  return { next, found };
+}
+
+export function useMonthlyScheduleRange(monthIds: string[]) {
+  const stableMonthIds = useMemo(
+    () => Array.from(new Set(monthIds)).sort(),
+    [monthIds.join("|")]
+  );
+  const initial = cachedSchedules(stableMonthIds);
+  const [schedules, setSchedules] = useState<Record<string, MonthlySchedule>>(initial.next);
+  const [loading, setLoading] = useState(!initial.found);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadSchedules(force = false, quiet = false) {
+    try {
+      if (!quiet) setLoading(true);
+      setError("");
+      const loaded = await getMonthlySchedules(stableMonthIds, force);
+      const next: Record<string, MonthlySchedule> = {};
+      for (const monthId of stableMonthIds) next[monthId] = loaded[monthId] || emptySchedule(monthId);
+      setSchedules(next);
+    } catch (err) {
+      console.error(err);
+      if (!Object.keys(schedules).length) setError("Unable to load the call schedule range.");
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }
+
+  async function saveOne(schedule: MonthlySchedule) {
+    const updated = { ...schedule, updatedAt: new Date().toISOString() };
+    await saveMonthlySchedule(updated);
+    setSchedules((current) => ({ ...current, [updated.id]: updated }));
+  }
+
+  async function updateCell(cell: MonthlyScheduleCell) {
+    const monthId = cell.date.slice(0, 7);
+    const schedule = schedules[monthId] || emptySchedule(monthId);
+    const key = `${cell.date}_${cell.serviceId}`;
+    try {
+      setSaving(true); setError("");
+      await saveOne({
+        ...schedule,
+        status: "draft",
+        assignments: { ...schedule.assignments, [key]: cell },
+      });
+    } catch (err) {
+      console.error(err); setError("Unable to save the call assignment.");
+    } finally { setSaving(false); }
+  }
+
+  async function removeCell(date: string, serviceId: string) {
+    const monthId = date.slice(0, 7);
+    const schedule = schedules[monthId] || emptySchedule(monthId);
+    const assignments = { ...schedule.assignments };
+    delete assignments[`${date}_${serviceId}`];
+    try {
+      setSaving(true); setError("");
+      await saveOne({ ...schedule, status: "draft", assignments });
+    } catch (err) {
+      console.error(err); setError("Unable to remove the call assignment.");
+    } finally { setSaving(false); }
+  }
+
+  async function setRangeStatus(status: MonthlySchedule["status"]) {
+    try {
+      setSaving(true); setError("");
+      const now = new Date().toISOString();
+      const next = stableMonthIds.map((monthId) => ({
+        ...(schedules[monthId] || emptySchedule(monthId)), status, updatedAt: now,
+      }));
+      await saveMonthlySchedules(next);
+      setSchedules(Object.fromEntries(next.map((item) => [item.id, item])));
+      try {
+        await publishPublicWhoOnMonths(stableMonthIds, { clearUnpublishedCalls: status !== "published" });
+      } catch (publicError) {
+        console.warn("Schedule status changed, but the public Who's On snapshot could not be refreshed.", publicError);
+      }
+    } catch (err) {
+      console.error(err); setError("Unable to update the publish status.");
+    } finally { setSaving(false); }
+  }
+
+  async function importCells(cells: MonthlyScheduleCell[], replaceDifferent: boolean) {
+    try {
+      setSaving(true); setError("");
+      const nextSchedules: Record<string, MonthlySchedule> = { ...schedules };
+      for (const cell of cells) {
+        const monthId = cell.date.slice(0, 7);
+        const schedule = nextSchedules[monthId] || emptySchedule(monthId);
+        const key = `${cell.date}_${cell.serviceId}`;
+        const existing = schedule.assignments[key];
+        if (existing && existing.residentId !== cell.residentId && !replaceDifferent) continue;
+        nextSchedules[monthId] = {
+          ...schedule,
+          status: "draft",
+          assignments: { ...schedule.assignments, [key]: cell },
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      const changed = Object.values(nextSchedules).filter((schedule) =>
+        cells.some((cell) => cell.date.slice(0, 7) === schedule.id)
+      );
+      await saveMonthlySchedules(changed);
+      setSchedules(nextSchedules);
+    } catch (err) {
+      console.error(err); setError("Unable to import call assignments."); throw err;
+    } finally { setSaving(false); }
+  }
+
+  useEffect(() => {
+    const cached = cachedSchedules(stableMonthIds);
+    if (cached.found) {
+      setSchedules((current) => ({ ...current, ...cached.next }));
+      setLoading(false);
+    }
+    const refreshFlags = stableMonthIds.map((monthId) =>
+      shouldRefreshThisSession(`monthly-schedule:${monthId}`)
+    );
+    const force = refreshFlags.some(Boolean);
+    void loadSchedules(force, cached.found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stableMonthIds.join("|")]);
+
+  const assignments = useMemo(
+    () => Object.values(schedules).reduce<Record<string, MonthlyScheduleCell>>(
+      (result, schedule) => ({ ...result, ...schedule.assignments }), {}
+    ),
+    [schedules]
+  );
+
+  const allPublished = stableMonthIds.length > 0 &&
+    stableMonthIds.every((monthId) => schedules[monthId]?.status === "published");
+
+  return {
+    schedules, assignments, loading, saving, error, allPublished,
+    reloadSchedules: () => loadSchedules(true),
+    updateCell, removeCell, setRangeStatus, importCells,
+  };
+}

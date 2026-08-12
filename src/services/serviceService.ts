@@ -9,17 +9,26 @@ import {
 
 import { db } from "../config/firebase";
 import type { ScheduleService } from "../types/schedule";
+import { CACHE_TTL, invalidateCachedValue, readThroughCache } from "./dataCache";
 
 const servicesCollection = collection(db, "services");
 
-export async function getServices(): Promise<ScheduleService[]> {
-  const q = query(servicesCollection, orderBy("displayOrderAll", "asc"));
-  const snapshot = await getDocs(q);
+const CACHE_KEY = "services:all";
 
-  return snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...(docSnap.data() as Omit<ScheduleService, "id">),
-  }));
+export async function getServices(force = false): Promise<ScheduleService[]> {
+  return readThroughCache(
+    CACHE_KEY,
+    async () => {
+      const q = query(servicesCollection, orderBy("displayOrderAll", "asc"));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...(docSnap.data() as Omit<ScheduleService, "id">),
+      }));
+    },
+    CACHE_TTL.reference,
+    force
+  );
 }
 
 function attendingService(
@@ -49,6 +58,7 @@ function attendingService(
 }
 
 export async function seedDefaultServices() {
+  invalidateCachedValue(CACHE_KEY);
   const services: ScheduleService[] = [
     attendingService(
       "tele-2n-ccu-attending-call",

@@ -10,4 +10,6 @@ export interface Attending {
   active: boolean;
   availableForScheduling: boolean;
   notes: string;
+  birthdayMonth?: number;
+  birthdayDay?: number;
 }

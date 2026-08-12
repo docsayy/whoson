@@ -39,6 +39,7 @@ import type {
 } from "../types/attendingSchedule";
 import type { ScheduleService } from "../types/schedule";
 import { canBuildSchedule } from "../utils/permissions";
+import { publishPublicWhoOnRange } from "../services/publicWhosOnService";
 
 type ScheduleTab = "Core" | "Specialty";
 
@@ -188,6 +189,7 @@ function serviceSpecialtyKey(serviceName: string) {
   if (text.includes("infect") || text === "id") return "infectiousdisease";
   if (text.includes("neph")) return "nephrology";
   if (text.includes("rheum")) return "rheumatology";
+  if (text.includes("endo")) return "endocrinology";
   if (text.includes("heme")) return "hematology";
   if (text.includes("onc")) return "oncology";
   if (text.includes("observ")) return "observation";
@@ -230,27 +232,41 @@ function attendingMatchesService(
   }
 
   const serviceKey = serviceSpecialtyKey(service.name);
-  const attendingText = normalizeText(`${attending.specialty} ${attending.notes}`);
+  // Specialty/consulting lists are intentionally filtered from the specialty
+  // field only. Notes such as "admitting" or "covers CCU" must never make a
+  // Medicine/admitting attending appear in the Cardiology/CCU consult list.
+  const attendingSpecialty = normalizeText(attending.specialty || "");
 
   if (!serviceKey) return true;
 
   if (serviceKey === "gastroenterology") {
-    return attendingText.includes("gastroenterology") || attendingText.includes("gi");
+    return attendingSpecialty.includes("gastroenterology") || attendingSpecialty === "gi";
   }
 
   if (serviceKey === "infectiousdisease") {
-    return attendingText.includes("infectiousdisease") || attendingText.includes("id");
+    return attendingSpecialty.includes("infectiousdisease") || attendingSpecialty === "id";
   }
 
   if (serviceKey === "hematology" || serviceKey === "oncology") {
-    return attendingText.includes("hematology") || attendingText.includes("oncology");
+    return attendingSpecialty.includes("hematology") || attendingSpecialty.includes("oncology");
   }
 
   if (serviceKey === "pulmonary") {
-    return attendingText.includes("pulmonary") || attendingText.includes("pulm") || attendingText.includes("micu");
+    return attendingSpecialty.includes("pulmonary") ||
+      attendingSpecialty.includes("pulmonology") ||
+      attendingSpecialty.includes("micu") ||
+      attendingSpecialty.includes("criticalcare");
   }
 
-  return attendingText.includes(serviceKey);
+  if (serviceKey === "cardiology") {
+    return attendingSpecialty.includes("cardiology") || attendingSpecialty === "cardio";
+  }
+
+  if (serviceKey === "endocrinology") {
+    return attendingSpecialty.includes("endocrinology") || attendingSpecialty === "endo";
+  }
+
+  return attendingSpecialty.includes(serviceKey);
 }
 
 function serviceIcon(service: string) {
@@ -286,6 +302,45 @@ function coreRowToService(row: CoreRow): ScheduleService {
     visibleOnAllServices: true,
     active: true,
   };
+}
+
+function fallbackSpecialtyService(
+  id: string,
+  name: string,
+  shortName: string,
+  displayOrder: number
+): ScheduleService {
+  return {
+    id,
+    name,
+    shortName,
+    category: "Consulting",
+    coverageGroup: "Attending",
+    attendingScheduleType: "Specialty",
+    requiredTraining: ["Attending"],
+    defaultStartTime: "07:00",
+    defaultEndTime: "07:00",
+    displayOrderCall: displayOrder,
+    displayOrderAll: displayOrder,
+    visibleOnCall: false,
+    visibleOnAllServices: true,
+    active: true,
+  };
+}
+
+function isCoreOnlyServiceName(name: string) {
+  const text = normalizeText(name);
+  return (
+    text.includes("observation") ||
+    text.includes("admitting") ||
+    text.includes("faculty") ||
+    text.includes("2n2") ||
+    text.includes("2n1") ||
+    text.includes("4north") ||
+    text.includes("4n") ||
+    text.includes("3w") ||
+    text.includes("attendingonrecord")
+  );
 }
 
 function isActiveOnDate(assignment: AttendingScheduleAssignment, date: string) {
@@ -353,12 +408,33 @@ export default function AttendingCallSchedulePage({
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [attendings]);
 
+  const attendingById = useMemo(
+    () => new Map(attendings.map((attending) => [attending.id, attending])),
+    [attendings]
+  );
+
   const specialtyServices = useMemo(() => {
-    return services
+    const filtered = services
       .filter((service) => service.active)
       .filter((service) => service.coverageGroup === "Attending")
       .filter((service) => service.attendingScheduleType === "Specialty")
-      .sort((a, b) => a.displayOrderAll - b.displayOrderAll);
+      .filter((service) => !isCoreOnlyServiceName(service.name));
+
+    // Endocrinology is a normal manually scheduled consult service. The
+    // service row is available even when an older Firestore seed did not yet
+    // include it; no attending is hardcoded.
+    if (!filtered.some((service) => serviceSpecialtyKey(service.name) === "endocrinology")) {
+      filtered.push(
+        fallbackSpecialtyService(
+          "endocrinology-on-call",
+          "Endocrinology On Call",
+          "Endocrinology",
+          208
+        )
+      );
+    }
+
+    return filtered.sort((a, b) => a.displayOrderAll - b.displayOrderAll);
   }, [services]);
 
   const coreServices = useMemo(() => coreRows.map(coreRowToService), []);
@@ -391,8 +467,10 @@ export default function AttendingCallSchedulePage({
       coverageStartTime: data.coverageStartTime,
       coverageEndTime: data.coverageEndTime,
       coverageNote: data.coverageNote,
-      phone: data.attending.phone,
-      pager: data.attending.pager,
+      // Contact details are resolved from the protected attending profile at
+      // display time, so schedule records do not duplicate phone/pager data.
+      phone: "",
+      pager: "",
       notes: data.notes,
       createdAt: data.existing?.createdAt || now,
       updatedAt: now,
@@ -405,14 +483,29 @@ export default function AttendingCallSchedulePage({
       await addAssignment(payload);
       setAddingAssignment(null);
     }
+
+    try {
+      await publishPublicWhoOnRange(data.startDate, data.endDate);
+    } catch (publicError) {
+      console.warn("Attending assignment saved, but the public Who's On snapshot could not be refreshed.", publicError);
+    }
   }
 
   async function handleDelete(id: string) {
     if (!allowBuild) return;
+    const assignment = assignments.find((item) => item.id === id);
     const confirmed = window.confirm("Delete this attending assignment?");
     if (!confirmed) return;
     await removeAssignment(id);
     setEditingAssignment(null);
+
+    if (assignment) {
+      try {
+        await publishPublicWhoOnRange(assignment.startDate, assignment.endDate);
+      } catch (publicError) {
+        console.warn("Attending assignment deleted, but the public Who's On snapshot could not be refreshed.", publicError);
+      }
+    }
   }
 
   function goPreviousWeek() {
@@ -707,10 +800,10 @@ export default function AttendingCallSchedulePage({
                                     },
                                   }}
                                 >
-                                  {assignment.attendingName}
+                                  {attendingById.get(assignment.attendingId)?.displayName || assignment.attendingName}
                                 </Button>
 
-                                {assignment.phone && (
+                                {(attendingById.get(assignment.attendingId)?.phone || assignment.phone) && (
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
@@ -718,7 +811,7 @@ export default function AttendingCallSchedulePage({
                                     noWrap
                                     sx={{ display: "block" }}
                                   >
-                                    {assignment.phone}
+                                    {attendingById.get(assignment.attendingId)?.phone || assignment.phone}
                                   </Typography>
                                 )}
                               </Box>

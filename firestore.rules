@@ -1,0 +1,231 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profileExists() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isManager() {
+      return profileExists() && (
+        profile().role == 'Admin' ||
+        profile().role == 'admin' ||
+        profile().role == 'Chief Resident' ||
+        profile().role == 'Program Coordinator'
+      );
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isSuperAdminEmail() {
+      return signedIn() &&
+        request.auth.token.email != null &&
+        request.auth.token.email == 'msayyar@jhmc.org';
+    }
+
+    function inviteIsActive(invite) {
+      return (invite.active == true || invite.active == 'true') &&
+        (!("revokedAt" in invite) || invite.revokedAt == null);
+    }
+
+    function validNewUserProfile(uid) {
+      return isOwner(uid) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.active == true &&
+        request.resource.data.approved == true &&
+        request.resource.data.emailVerified == true;
+    }
+
+    function validSuperAdminSignup(uid) {
+      return validNewUserProfile(uid) &&
+        isSuperAdminEmail() &&
+        request.resource.data.role == 'Admin' &&
+        request.resource.data.displayName == 'Super Admin';
+    }
+
+    function validInviteSignup(uid) {
+      let code = request.resource.data.inviteCode;
+      let invite = getAfter(
+        /databases/$(database)/documents/inviteCodes/$(code)
+      ).data;
+
+      return validNewUserProfile(uid) &&
+        code is string &&
+        inviteIsActive(invite) &&
+        invite.used == true &&
+        invite.usedByUid == uid &&
+        invite.role == request.resource.data.role &&
+        invite.displayName == request.resource.data.displayName &&
+        (
+          (!("residentId" in invite) && !("residentId" in request.resource.data)) ||
+          (("residentId" in invite) &&
+            request.resource.data.residentId == invite.residentId)
+        ) &&
+        (
+          (!("attendingId" in invite) && !("attendingId" in request.resource.data)) ||
+          (("attendingId" in invite) &&
+            request.resource.data.attendingId == invite.attendingId)
+        );
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isManager();
+      allow create: if isManager() ||
+        validSuperAdminSignup(uid) ||
+        validInviteSignup(uid);
+      allow update: if isManager() ||
+        (isOwner(uid) && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'displayName',
+            'phone',
+            'lastLogin',
+            'emailVerified',
+            'updatedAt'
+          ]));
+      allow delete: if isManager();
+    }
+
+    match /inviteCodes/{id} {
+      // A code can be checked only by exact document ID. Listing all invite
+      // codes remains manager-only.
+      allow get: if true;
+      allow list: if isManager();
+      allow create, delete: if isManager();
+      allow update: if isManager() || (
+        signedIn() &&
+        inviteIsActive(resource.data) &&
+        (resource.data.used == false || resource.data.used == 'false') &&
+        request.resource.data.used == true &&
+        request.resource.data.usedByUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'used',
+          'usedByUid',
+          'usedByEmail',
+          'usedAt',
+          'updatedAt'
+        ])
+      );
+    }
+
+    // Sanitized, manager-generated public snapshots. These documents contain
+    // published names, services, and coverage times only—never contact data,
+    // profile links, warning details, or draft assignments.
+    match /publicWhoOnMonths/{monthId} {
+      allow read: if true;
+      allow write: if isManager();
+    }
+
+    match /residents/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /attendings/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /rotations/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /academicBlocks/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /blockAssignments/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /scheduleMonths/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /attendingScheduleAssignments/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /services/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /directoryContacts/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /appSettings/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /calendarSubscriptions/{uid} {
+      allow read: if isOwner(uid) || isManager();
+      allow create, update, delete: if isOwner(uid) || isManager();
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn() && (
+        (("recipientUid" in resource.data) &&
+          resource.data.recipientUid == request.auth.uid) ||
+        (("recipientResidentId" in resource.data) &&
+          ("residentId" in profile()) &&
+          resource.data.recipientResidentId == profile().residentId)
+      );
+      allow create: if signedIn();
+      allow update: if signedIn() && (
+        (("recipientUid" in resource.data) &&
+          resource.data.recipientUid == request.auth.uid) ||
+        (("recipientResidentId" in resource.data) &&
+          ("residentId" in profile()) &&
+          resource.data.recipientResidentId == profile().residentId)
+      );
+      allow delete: if isManager();
+    }
+
+    match /callSwapRequests/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.requesterUid == request.auth.uid;
+      allow update: if signedIn() && (
+        isManager() ||
+        resource.data.requesterUid == request.auth.uid ||
+        (("targetUid" in resource.data) &&
+          resource.data.targetUid == request.auth.uid) ||
+        (("residentId" in profile()) &&
+          resource.data.targetResidentId == profile().residentId)
+      );
+      allow delete: if isManager();
+    }
+
+    match /lectureEvents/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /hospitalHolidays/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /maintenanceArchive/{id} {
+      allow read, write: if isManager();
+    }
+  }
+}

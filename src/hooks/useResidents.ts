@@ -7,67 +7,86 @@ import {
   updateResident,
 } from "../services/residentService";
 
+function sortResidents(items: Resident[]) {
+  return items.slice().sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
 export function useResidents() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadResidents() {
+  async function loadResidents(showLoading = true) {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError("");
-      const data = await getResidents();
-      setResidents(data);
+      setResidents(await getResidents());
     } catch (err) {
       console.error(err);
       setError("Unable to load residents.");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }
 
   async function addResident(resident: Omit<Resident, "id">) {
     try {
+      setSaving(true);
       setError("");
-      await createResident(resident);
-      await loadResidents();
+      const id = await createResident(resident);
+      setResidents((current) => sortResidents([...current, { id, ...resident }]));
     } catch (err) {
       console.error(err);
       setError("Unable to add resident.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   async function saveResident(resident: Resident) {
     try {
+      setSaving(true);
       setError("");
       await updateResident(resident);
-      await loadResidents();
+      setResidents((current) =>
+        sortResidents(current.map((item) => (item.id === resident.id ? resident : item)))
+      );
     } catch (err) {
       console.error(err);
       setError("Unable to save resident.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   async function removeResident(id: string) {
     try {
+      setSaving(true);
       setError("");
       await deleteResidentById(id);
-      await loadResidents();
+      setResidents((current) => current.filter((item) => item.id !== id));
     } catch (err) {
       console.error(err);
       setError("Unable to delete resident.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   useEffect(() => {
-    loadResidents();
+    void loadResidents();
   }, []);
 
   return {
     residents,
     loading,
+    saving,
     error,
-    reloadResidents: loadResidents,
+    reloadResidents: () => loadResidents(false),
     addResident,
     saveResident,
     removeResident,

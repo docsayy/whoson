@@ -8,23 +8,21 @@ import {
 } from "../services/attendingScheduleService";
 
 export function useAttendingSchedule() {
-  const [assignments, setAssignments] = useState<
-    AttendingScheduleAssignment[]
-  >([]);
+  const [assignments, setAssignments] = useState<AttendingScheduleAssignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadAssignments() {
+  async function loadAssignments(showLoading = true) {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError("");
-      const data = await getAttendingScheduleAssignments();
-      setAssignments(data);
+      setAssignments(await getAttendingScheduleAssignments());
     } catch (err) {
       console.error(err);
       setError("Unable to load attending schedule.");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }
 
@@ -32,46 +30,61 @@ export function useAttendingSchedule() {
     assignment: Omit<AttendingScheduleAssignment, "id">
   ) {
     try {
+      setSaving(true);
       setError("");
-      await createAttendingScheduleAssignment(assignment);
-      await loadAssignments();
+      const id = await createAttendingScheduleAssignment(assignment);
+      setAssignments((current) => [...current, { id, ...assignment }]);
     } catch (err) {
       console.error(err);
       setError("Unable to add attending schedule assignment.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   async function saveAssignment(assignment: AttendingScheduleAssignment) {
     try {
+      setSaving(true);
       setError("");
       await updateAttendingScheduleAssignment(assignment);
-      await loadAssignments();
+      setAssignments((current) =>
+        current.map((item) => (item.id === assignment.id ? assignment : item))
+      );
     } catch (err) {
       console.error(err);
       setError("Unable to save attending schedule assignment.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   async function removeAssignment(id: string) {
     try {
+      setSaving(true);
       setError("");
       await deleteAttendingScheduleAssignmentById(id);
-      await loadAssignments();
+      setAssignments((current) => current.filter((item) => item.id !== id));
     } catch (err) {
       console.error(err);
       setError("Unable to delete attending schedule assignment.");
+      throw err;
+    } finally {
+      setSaving(false);
     }
   }
 
   useEffect(() => {
-    loadAssignments();
+    void loadAssignments();
   }, []);
 
   return {
     assignments,
     loading,
+    saving,
     error,
-    reloadAssignments: loadAssignments,
+    reloadAssignments: () => loadAssignments(false),
     addAssignment,
     saveAssignment,
     removeAssignment,

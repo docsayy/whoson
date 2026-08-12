@@ -37,6 +37,7 @@ import type { InviteCode } from "../types/inviteCode";
 import type { PGY, Resident, ResidentRole } from "../types/resident";
 import type { AppRole } from "../types/userProfile";
 import { canManageResidents } from "../utils/permissions";
+import { formatBirthday, isBirthdayOnDate, validBirthday } from "../utils/birthday";
 
 type ResidentTab = "Everyone" | "PGY-1" | "PGY-2" | "PGY-3";
 
@@ -106,7 +107,7 @@ export default function ResidentsPage({
       })
       .filter((resident) => {
         const text =
-          `${resident.displayName} ${resident.firstName} ${resident.lastName} ${resident.email} ${resident.pgy} ${resident.role} ${resident.pager}`.toLowerCase();
+          `${isBirthdayOnDate(resident, new Date()) ? `🎂 ${resident.displayName}` : resident.displayName} ${resident.firstName} ${resident.lastName} ${resident.email} ${resident.pgy} ${resident.role} ${resident.pager}`.toLowerCase();
 
         return text.includes(search.toLowerCase());
       })
@@ -352,13 +353,14 @@ export default function ResidentsPage({
             </Stack>
           ) : (
             <Box sx={{ overflowX: "auto" }}>
-              <Box sx={{ minWidth: allowManage ? 960 : 680 }}>
+              <Box sx={{ minWidth: allowManage ? 760 : 560, width: "100%" }}>
                 <Box
                   sx={{
                     display: "grid",
                     gridTemplateColumns: allowManage
-                      ? "minmax(220px,1.5fr) 100px 150px 100px 300px"
-                      : "minmax(220px,1.5fr) 100px 150px 100px",
+                      ? "minmax(180px,220px) 82px 128px 84px 214px"
+                      : "minmax(180px,220px) 82px 128px 84px",
+                    justifyContent: "start",
                     gap: 1,
                     px: 1,
                     py: 0.75,
@@ -379,8 +381,9 @@ export default function ResidentsPage({
                     sx={{
                       display: "grid",
                       gridTemplateColumns: allowManage
-                        ? "minmax(220px,1.5fr) 100px 150px 100px 300px"
-                        : "minmax(220px,1.5fr) 100px 150px 100px",
+                      ? "minmax(180px,220px) 82px 128px 84px 214px"
+                      : "minmax(180px,220px) 82px 128px 84px",
+                    justifyContent: "start",
                       gap: 1,
                       alignItems: "center",
                       px: 1,
@@ -409,12 +412,17 @@ export default function ResidentsPage({
                           },
                         }}
                       >
-                        {resident.displayName}
+                        {isBirthdayOnDate(resident, new Date()) ? `🎂 ${resident.displayName}` : resident.displayName}
                       </Button>
 
                       <Typography variant="caption" color="text.secondary" display="block">
                         {resident.email || `${resident.firstName} ${resident.lastName}`}
                       </Typography>
+                      {validBirthday(resident.birthdayMonth, resident.birthdayDay) && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Birthday: {formatBirthday(resident)}
+                        </Typography>
+                      )}
                     </Box>
 
                     <Typography fontSize={13} fontWeight={700}>
@@ -607,9 +615,12 @@ function ResidentFormDialog({
       form.displayName.trim() ||
       `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
+    const birthdayOk = validBirthday(form.birthdayMonth, form.birthdayDay);
     onSave({
       ...form,
       displayName,
+      birthdayMonth: birthdayOk ? form.birthdayMonth : undefined,
+      birthdayDay: birthdayOk ? form.birthdayDay : undefined,
     });
   }
 
@@ -660,6 +671,42 @@ function ResidentFormDialog({
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             fullWidth
           />
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              select
+              label="Birthday month (optional)"
+              value={form.birthdayMonth || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  birthdayMonth: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+              fullWidth
+            >
+              <MenuItem value="">Not provided</MenuItem>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                <MenuItem key={month} value={month}>
+                  {new Date(2024, month - 1, 1).toLocaleDateString("en-US", { month: "long" })}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              type="number"
+              label="Birthday day (optional)"
+              value={form.birthdayDay || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  birthdayDay: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+              inputProps={{ min: 1, max: 31 }}
+              helperText="Month and day only; year is not stored."
+              fullWidth
+            />
+          </Stack>
 
           <TextField
             select

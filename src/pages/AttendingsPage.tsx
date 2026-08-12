@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  MenuItem,
   Stack,
   Tab,
   Tabs,
@@ -32,6 +33,7 @@ import { useAuth } from "../context/AuthContext";
 import { useAttendings } from "../hooks/useAttendings";
 import type { Attending } from "../types/attending";
 import { canManageResidents } from "../utils/permissions";
+import { formatBirthday, isBirthdayOnDate, validBirthday } from "../utils/birthday";
 
 type AttendingTab = "All" | "Admitting" | "Specialty" | "Inactive";
 
@@ -114,7 +116,7 @@ export default function AttendingsPage({
       })
       .filter((attending) => {
         const text =
-          `${attending.displayName} ${attending.firstName} ${attending.lastName} ${attending.specialty} ${attending.email} ${attending.pager} ${attending.phone}`.toLowerCase();
+          `${isBirthdayOnDate(attending, new Date()) ? `🎂 ${attending.displayName}` : attending.displayName} ${attending.firstName} ${attending.lastName} ${attending.specialty} ${attending.email} ${attending.pager} ${attending.phone}`.toLowerCase();
 
         return text.includes(search.toLowerCase());
       })
@@ -239,13 +241,14 @@ export default function AttendingsPage({
             </Stack>
           ) : (
             <Box sx={{ overflowX: "auto" }}>
-              <Box sx={{ minWidth: allowManage ? 880 : 720 }}>
+              <Box sx={{ minWidth: allowManage ? 820 : 640, width: "100%" }}>
                 <Box
                   sx={{
                     display: "grid",
                     gridTemplateColumns: allowManage
-                      ? "minmax(210px,1.4fr) 190px 150px 130px 150px"
-                      : "minmax(210px,1.4fr) 190px 150px 130px",
+                      ? "minmax(185px,225px) minmax(125px,155px) minmax(130px,150px) 82px 180px"
+                      : "minmax(185px,225px) minmax(125px,155px) minmax(130px,150px) 82px",
+                    justifyContent: "start",
                     gap: 1,
                     px: 1,
                     py: 0.75,
@@ -254,7 +257,7 @@ export default function AttendingsPage({
                   }}
                 >
                   <HeaderText>Name</HeaderText>
-                  <HeaderText>Group / Specialty</HeaderText>
+                  <HeaderText>Specialty</HeaderText>
                   <HeaderText>Phone</HeaderText>
                   <HeaderText>Status</HeaderText>
                   {allowManage && <HeaderText>Controls</HeaderText>}
@@ -266,8 +269,9 @@ export default function AttendingsPage({
                     sx={{
                       display: "grid",
                       gridTemplateColumns: allowManage
-                        ? "minmax(210px,1.4fr) 190px 150px 130px 150px"
-                        : "minmax(210px,1.4fr) 190px 150px 130px",
+                      ? "minmax(185px,225px) minmax(125px,155px) minmax(130px,150px) 82px 180px"
+                      : "minmax(185px,225px) minmax(125px,155px) minmax(130px,150px) 82px",
+                    justifyContent: "start",
                       gap: 1,
                       alignItems: "center",
                       px: 1,
@@ -296,35 +300,21 @@ export default function AttendingsPage({
                           },
                         }}
                       >
-                        {attending.displayName}
+                        {isBirthdayOnDate(attending, new Date()) ? `🎂 ${attending.displayName}` : attending.displayName}
                       </Button>
                       <Typography variant="caption" color="text.secondary" display="block">
                         {attending.email || `${attending.firstName} ${attending.lastName}`}
                       </Typography>
+                      {validBirthday(attending.birthdayMonth, attending.birthdayDay) && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Birthday: {formatBirthday(attending)}
+                        </Typography>
+                      )}
                     </Box>
 
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <Chip
-                        label={isAdmittingAttending(attending) ? "Admitting" : "Specialty"}
-                        size="small"
-                        sx={{
-                          height: 21,
-                          fontSize: 11,
-                          fontWeight: 800,
-                          color: isAdmittingAttending(attending) ? "#2563eb" : "#7c3aed",
-                          backgroundColor: isAdmittingAttending(attending)
-                            ? "#eff6ff"
-                            : "#f5f3ff",
-                          border: "1px solid",
-                          borderColor: isAdmittingAttending(attending)
-                            ? "#bfdbfe"
-                            : "#ddd6fe",
-                        }}
-                      />
-                      <Typography fontSize={12.5} fontWeight={650}>
-                        {attending.specialty || "Medicine"}
-                      </Typography>
-                    </Stack>
+                    <Typography fontSize={12.5} fontWeight={700}>
+                      {attending.specialty || "Medicine"}
+                    </Typography>
 
                     <Typography fontSize={13} fontWeight={700}>
                       {attending.phone ? `☎ ${attending.phone}` : "—"}
@@ -456,10 +446,13 @@ function AttendingFormDialog({
       form.displayName.trim() ||
       `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
+    const birthdayOk = validBirthday(form.birthdayMonth, form.birthdayDay);
     onSave({
       ...form,
       displayName,
       specialty: form.specialty.trim(),
+      birthdayMonth: birthdayOk ? form.birthdayMonth : undefined,
+      birthdayDay: birthdayOk ? form.birthdayDay : undefined,
     });
   }
 
@@ -531,6 +524,42 @@ function AttendingFormDialog({
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             fullWidth
           />
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              select
+              label="Birthday month (optional)"
+              value={form.birthdayMonth || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  birthdayMonth: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+              fullWidth
+            >
+              <MenuItem value="">Not provided</MenuItem>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                <MenuItem key={month} value={month}>
+                  {new Date(2024, month - 1, 1).toLocaleDateString("en-US", { month: "long" })}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              type="number"
+              label="Birthday day (optional)"
+              value={form.birthdayDay || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  birthdayDay: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+              inputProps={{ min: 1, max: 31 }}
+              helperText="Month and day only; year is not stored."
+              fullWidth
+            />
+          </Stack>
 
           <TextField
             label="Notes"

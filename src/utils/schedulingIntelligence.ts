@@ -7,16 +7,17 @@ import {
   getAutoNightFloatCell,
   isNightFloatService,
 } from "./nightFloatSchedule";
+import {
+  getMissingCoverageIssues,
+  validateCallAssignment,
+  type RuleCode,
+} from "./scheduleRules";
 
 export type ScheduleIssueSeverity = "critical" | "warning" | "info";
 
 export type ScheduleIssueCategory =
-  | "double-assignment"
-  | "wrong-pgy"
-  | "vacation-conflict"
-  | "night-float-conflict"
+  | RuleCode
   | "manual-override"
-  | "jeopardy-conflict"
   | "block-conflict";
 
 export interface ScheduleIssue {
@@ -32,44 +33,31 @@ export interface ScheduleIssue {
   message: string;
 }
 
-function normalize(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+function formatIssueDate(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function getResidentById(residents: Resident[], id: string) {
-  return residents.find((resident) => resident.id === id);
-}
-
-function getCurrentBlock(date: string, blocks: AcademicBlock[]) {
-  return blocks.find((block) => date >= block.startDate && date <= block.endDate);
-}
-
-function isVacationLike(rotationName: string) {
-  const text = normalize(rotationName);
-  return text.includes("vacation") || text.includes("pto") || text.includes("leave");
-}
-
-function isJeopardyLike(rotationName: string) {
-  return normalize(rotationName).includes("jeopardy");
-}
-
-function isDayService(service: ScheduleService) {
-  if (isNightFloatService(service.id)) return false;
-  const text = normalize(`${service.name} ${service.category}`);
-  return !text.includes("night") && !text.includes("nf");
-}
-
-function getRequiredTrainingText(service: ScheduleService) {
-  return service.requiredTraining?.join(", ") || "Any";
-}
-
-function residentMeetsServiceRequirement(
-  resident: Resident,
-  service: ScheduleService
-) {
-  const required = service.requiredTraining || [];
-  if (required.length === 0) return true;
-  return required.includes(resident.pgy);
+function titleForCode(code: RuleCode) {
+  const titles: Record<RuleCode, string> = {
+    "service-unavailable": "Service unavailable",
+    "wrong-pgy": "Wrong PGY level",
+    "vacation-conflict": "Vacation conflict",
+    "jeopardy-conflict": "Jeopardy conflict",
+    "duplicate-assignment": "Resident assigned more than once",
+    "night-float-day-conflict": "Night Float and day conflict",
+    "night-float-short-duty-conflict": "Night Float and short duty conflict",
+    "night-float-off-night": "Night Float off-night",
+    "short-duty-floor-mismatch": "Short duty floor mismatch",
+    "block-rotation-mismatch": "Block rotation mismatch",
+    "missing-coverage": "Missing coverage",
+  };
+  return titles[code];
 }
 
 export function getEffectiveMonthlyCell({
@@ -88,7 +76,6 @@ export function getEffectiveMonthlyCell({
   residents: Resident[];
 }) {
   const manual = monthlyAssignments[`${date}_${service.id}`];
-
   const auto = isNightFloatService(service.id)
     ? getAutoNightFloatCell({
         date,
@@ -113,6 +100,7 @@ export function detectDailyScheduleIssues({
   blocks,
   blockAssignments,
   residents,
+  includeMissingCoverage = false,
 }: {
   date: string;
   services: ScheduleService[];
@@ -120,56 +108,88 @@ export function detectDailyScheduleIssues({
   blocks: AcademicBlock[];
   blockAssignments: BlockAssignment[];
   residents: Resident[];
+  includeMissingCoverage?: boolean;
 }): ScheduleIssue[] {
   const issues: ScheduleIssue[] = [];
-  const currentBlock = getCurrentBlock(date, blocks);
+  const residentById = new Map(residents.map((resident) => [resident.id, resident]));
+  const effectiveAssignments: Record<string, MonthlyScheduleCell> = {
+    ...monthlyAssignments,
+  };
 
-  const effectiveCells = services
-    .map((service) => {
-      const result = getEffectiveMonthlyCell({
-        date,
-        service,
-        monthlyAssignments,
-        blocks,
-        blockAssignments,
-        residents,
-      });
+  const effectiveRows = services.map((service) => {
+    const result = getEffectiveMonthlyCell({
+      date,
+      service,
+      monthlyAssignments,
+      blocks,
+      blockAssignments,
+      residents,
+    });
 
-      return {
-        service,
-        ...result,
-      };
-    })
-    .filter((item) => item.cell);
+    if (result.cell) {
+      effectiveAssignments[`${date}_${service.id}`] = result.cell;
+    }
 
-  const cellsByResident = new Map<string, typeof effectiveCells>();
+    return { service, ...result };
+  });
 
-  for (const item of effectiveCells) {
-    const cell = item.cell;
-    if (!cell) continue;
-
-    const existing = cellsByResident.get(cell.residentId) || [];
-    existing.push(item);
-    cellsByResident.set(cell.residentId, existing);
-
-    const resident = getResidentById(residents, cell.residentId);
-
-    if (resident && !residentMeetsServiceRequirement(resident, item.service)) {
+  if (includeMissingCoverage) {
+    for (const issue of getMissingCoverageIssues({
+      date,
+      services,
+      assignments: effectiveAssignments,
+    })) {
+      const service = services.find((item) =>
+        issue.message.startsWith(item.name)
+      );
       issues.push({
-        id: `wrong-pgy-${date}-${item.service.id}-${resident.id}`,
-        severity: "critical",
-        category: "wrong-pgy",
+        id: `missing-${date}-${service?.id || issue.message}`,
+        severity: issue.severity,
+        category: issue.code,
+        date,
+        serviceId: service?.id,
+        serviceName: service?.name,
+        title: titleForCode(issue.code),
+        message: `${formatIssueDate(date)}: ${issue.message}`,
+      });
+    }
+  }
+
+  for (const item of effectiveRows) {
+    if (!item.cell) continue;
+    const resident = residentById.get(item.cell.residentId);
+    if (!resident) continue;
+
+    const result = validateCallAssignment({
+      date,
+      service: item.service,
+      resident,
+      existingAssignments: effectiveAssignments,
+      blocks,
+      blockAssignments,
+      allowCoverageOverride: Boolean(item.manual?.notes),
+    });
+
+    for (const ruleIssue of result.issues) {
+      issues.push({
+        id: `${ruleIssue.code}-${date}-${item.service.id}-${resident.id}`,
+        severity: ruleIssue.severity,
+        category: ruleIssue.code,
         date,
         residentId: resident.id,
         residentName: resident.displayName,
         serviceId: item.service.id,
         serviceName: item.service.name,
-        title: "Wrong PGY level",
-        message: `${resident.displayName} is ${resident.pgy}, but ${item.service.name} requires ${getRequiredTrainingText(item.service)}.`,
+        title: titleForCode(ruleIssue.code),
+        message: `${formatIssueDate(date)}: ${ruleIssue.message}`,
       });
     }
 
-    if (item.manual && item.auto && item.manual.residentId !== item.auto.residentId) {
+    if (
+      item.manual &&
+      item.auto &&
+      item.manual.residentId !== item.auto.residentId
+    ) {
       issues.push({
         id: `manual-override-${date}-${item.service.id}`,
         severity: "info",
@@ -180,104 +200,16 @@ export function detectDailyScheduleIssues({
         serviceId: item.service.id,
         serviceName: item.service.name,
         title: "Manual override",
-        message: `${item.service.name} was manually changed from ${item.auto.residentName} to ${item.manual.residentName}.`,
+        message: `${formatIssueDate(date)}: ${item.service.name} was manually changed from ${item.auto.residentName} to ${item.manual.residentName}.`,
       });
     }
   }
 
-  for (const [residentId, residentCells] of cellsByResident.entries()) {
-    const resident = getResidentById(residents, residentId);
-    if (!resident) continue;
-
-    if (residentCells.length > 1) {
-      issues.push({
-        id: `double-${date}-${residentId}`,
-        severity: "critical",
-        category: "double-assignment",
-        date,
-        residentId,
-        residentName: resident.displayName,
-        title: "Resident assigned more than once",
-        message: `${resident.displayName} is assigned to ${residentCells
-          .map((item) => item.service.name)
-          .join(", ")} on the same day.`,
-      });
-    }
-
-    const hasNightFloat = residentCells.some((item) =>
-      isNightFloatService(item.service.id)
-    );
-
-    const hasDayService = residentCells.some((item) => isDayService(item.service));
-
-    if (hasNightFloat && hasDayService) {
-      issues.push({
-        id: `nf-day-${date}-${residentId}`,
-        severity: "critical",
-        category: "night-float-conflict",
-        date,
-        residentId,
-        residentName: resident.displayName,
-        title: "Night float and day service conflict",
-        message: `${resident.displayName} is assigned to night float and a daytime call/service on the same date.`,
-      });
-    }
+  const unique = new Map<string, ScheduleIssue>();
+  for (const issue of issues) {
+    unique.set(issue.id, issue);
   }
-
-  if (currentBlock) {
-    const blockAssignmentsForDate = blockAssignments.filter(
-      (assignment) => assignment.blockId === currentBlock.id
-    );
-
-    for (const item of effectiveCells) {
-      const cell = item.cell;
-      if (!cell) continue;
-
-      const residentBlockAssignments = blockAssignmentsForDate.filter(
-        (assignment) => assignment.residentId === cell.residentId
-      );
-
-      const vacationAssignment = residentBlockAssignments.find((assignment) =>
-        isVacationLike(assignment.rotationName)
-      );
-
-      if (vacationAssignment) {
-        issues.push({
-          id: `vacation-${date}-${cell.residentId}-${item.service.id}`,
-          severity: "critical",
-          category: "vacation-conflict",
-          date,
-          residentId: cell.residentId,
-          residentName: cell.residentName,
-          serviceId: item.service.id,
-          serviceName: item.service.name,
-          title: "Vacation conflict",
-          message: `${cell.residentName} is on ${vacationAssignment.rotationName} but assigned to ${item.service.name}.`,
-        });
-      }
-
-      const jeopardyAssignment = residentBlockAssignments.find((assignment) =>
-        isJeopardyLike(assignment.rotationName)
-      );
-
-      if (jeopardyAssignment && !normalize(item.service.name).includes("jeopardy")) {
-        issues.push({
-          id: `jeopardy-${date}-${cell.residentId}-${item.service.id}`,
-          severity: "warning",
-          category: "jeopardy-conflict",
-          date,
-          residentId: cell.residentId,
-          residentName: cell.residentName,
-          serviceId: item.service.id,
-          serviceName: item.service.name,
-          title: "Jeopardy conflict",
-          message: `${cell.residentName} is assigned to Jeopardy in the block schedule but also assigned to ${item.service.name}.`,
-        });
-      }
-    }
-  }
-
-  return issues;
+  return Array.from(unique.values());
 }
 
 export function issueSeverityStyle(severity: ScheduleIssueSeverity) {

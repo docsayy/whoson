@@ -7,12 +7,15 @@ import BadgeIcon from "@mui/icons-material/Badge";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import ViewWeekIcon from "@mui/icons-material/ViewWeek";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import BeachAccessIcon from "@mui/icons-material/BeachAccess";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
+import SchoolIcon from "@mui/icons-material/School";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import BackupIcon from "@mui/icons-material/Backup";
 import VpnKeyIcon from "@mui/icons-material/VpnKey";
+import SyncAltIcon from "@mui/icons-material/SyncAlt";
 
 import type { AppPage } from "../types/page";
 import type {
@@ -57,6 +60,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   },
   { label: "Residents", page: "residents", icon: <PeopleIcon /> },
   { label: "Attendings", page: "attendings", icon: <BadgeIcon /> },
+  { label: "Lectures", page: "lectures", icon: <SchoolIcon /> },
   {
     label: "Invitations",
     page: "invites",
@@ -70,13 +74,28 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
     managerOnly: true,
   },
   { label: "Call Swaps", page: "call-swaps", icon: <SwapHorizIcon /> },
-  { label: "Vacation", page: "vacation", icon: <BeachAccessIcon /> },
+  {
+    label: "Scheduling Integrity",
+    page: "integrity",
+    icon: <FactCheckIcon />,
+    managerOnly: true,
+  },
+  {
+    label: "Calendar Feed",
+    page: "calendar-subscription",
+    icon: <EventAvailableIcon />,
+  },
   { label: "Coverage Rules", page: "coverage-rules", icon: <MenuBookIcon /> },
+  {
+    label: "External Schedule Source",
+    page: "external-sync",
+    icon: <SyncAltIcon />,
+    managerOnly: true,
+  },
   {
     label: "Settings",
     page: "settings",
     icon: <SettingsIcon />,
-    managerOnly: true,
     requiredForManagers: true,
   },
 ];
@@ -91,7 +110,7 @@ export function getNavItem(page: AppPage): NavItem | undefined {
 
 export function createDefaultSidebarSettings(): SidebarSettings {
   return {
-    version: 2,
+    version: 3,
     items: DEFAULT_NAV_ITEMS.map((item) => ({
       page: item.page,
       visibleToStandardUsers: !item.managerOnly,
@@ -178,7 +197,7 @@ export function normalizeSidebarSettings(
   }
 
   return {
-    version: 2,
+    version: 3,
     items,
     theme: normalizeTheme(input?.theme),
   };

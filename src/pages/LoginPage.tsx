@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -57,6 +58,10 @@ function friendlyAuthError(message: string) {
 
   if (message.includes("auth/network-request-failed")) {
     return "Network error. Please check your internet connection.";
+  }
+
+  if (message.includes("permission-denied") || message.includes("Missing or insufficient permissions")) {
+    return "WhosOn could not complete this signup because the database permissions are not updated yet. Ask an administrator to deploy the latest Firestore rules.";
   }
 
   return message;
@@ -130,6 +135,7 @@ function roleChipStyle(role?: string) {
 }
 
 export default function LoginPage() {
+  const navigate = useNavigate();
   const { login, signup, resetPassword, previewInvite } = useAuth();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -726,6 +732,14 @@ export default function LoginPage() {
               WhosOn v0.9.0
             </Typography>
           </Stack>
+
+          <Button
+            variant="text"
+            onClick={() => navigate("/whos-on")}
+            sx={{ mt: 1, textTransform: "none", fontWeight: 750 }}
+          >
+            View public Who&apos;s On
+          </Button>
         </CardContent>
       </Card>
 

@@ -17,4 +17,6 @@ export interface Resident {
   pgy: PGY;
   role: ResidentRole;
   active: boolean;
+  birthdayMonth?: number;
+  birthdayDay?: number;
 }
