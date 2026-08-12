@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -11,6 +14,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import DownloadIcon from "@mui/icons-material/Download";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SyncIcon from "@mui/icons-material/Sync";
 
 import {
@@ -31,6 +36,26 @@ function currentMonthBounds() {
       new Date(year, month + 1, 0).getDate()
     )}`,
   };
+}
+
+function downloadDataset(name: string, value: unknown, start: string, end: string) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rsb-${name}-${start}-to-${end}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function previewJson(value: unknown) {
+  const full = JSON.stringify(value, null, 2) || "No data returned.";
+  const limit = 30_000;
+  return full.length > limit
+    ? `${full.slice(0, limit)}\n\n… Preview shortened. Download the JSON file to inspect the complete dataset.`
+    : full;
 }
 
 export default function ExternalScheduleSyncPage() {
@@ -55,6 +80,7 @@ export default function ExternalScheduleSyncPage() {
   }
 
   const summary: ExternalSyncSummary | undefined = result?.summary;
+  const datasets = result?.datasets || {};
 
   return (
     <Box>
@@ -120,7 +146,7 @@ export default function ExternalScheduleSyncPage() {
       </Card>
 
       {summary && (
-        <Card>
+        <Card sx={{ mb: 2 }}>
           <CardContent>
             <Stack
               direction={{ xs: "column", sm: "row" }}
@@ -158,6 +184,68 @@ export default function ExternalScheduleSyncPage() {
                 </Stack>
               ))}
             </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {Object.keys(datasets).length > 0 && (
+        <Card>
+          <CardContent>
+            <Typography fontWeight={800} sx={{ mb: 0.5 }}>
+              Schedule data preview
+            </Typography>
+            <Typography color="text.secondary" fontSize={13} sx={{ mb: 1.5 }}>
+              Expand a dataset to inspect the records returned by RSB. This is
+              read-only and does not overwrite your Firestore schedules.
+            </Typography>
+
+            {Object.entries(datasets).map(([name, data]) => (
+              <Accordion key={name} disableGutters>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography fontWeight={750}>{name}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ sm: "center" }}
+                    spacing={1}
+                    sx={{ mb: 1 }}
+                  >
+                    <Typography color="text.secondary" fontSize={13}>
+                      Raw read-only response from RSB
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => downloadDataset(name, data, start, end)}
+                    >
+                      Download JSON
+                    </Button>
+                  </Stack>
+                  <Box
+                    component="pre"
+                    sx={{
+                      m: 0,
+                      p: 1.5,
+                      maxHeight: 480,
+                      overflow: "auto",
+                      borderRadius: 1.5,
+                      bgcolor: "grey.950",
+                      color: "grey.100",
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {previewJson(data)}
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            ))}
           </CardContent>
         </Card>
       )}
