@@ -19,6 +19,7 @@ type FirebaseTokenPayload = {
 };
 
 const RSB_BASE_URL = "https://schedule.rsbtest.xyz";
+const RSB_ORIGIN = new URL(RSB_BASE_URL).origin;
 const GOOGLE_JWK_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
@@ -121,6 +122,8 @@ async function loginToRsb(env: Env) {
     headers: {
       "content-type": "application/json",
       accept: "application/json",
+      origin: RSB_ORIGIN,
+      referer: `${RSB_ORIGIN}/`,
     },
     body: JSON.stringify({
       email: env.RSB_SCHEDULE_EMAIL,
@@ -144,6 +147,8 @@ async function rsbJson(path: string, cookie: string) {
     headers: {
       accept: "application/json",
       cookie,
+      origin: RSB_ORIGIN,
+      referer: `${RSB_ORIGIN}/`,
     },
   });
 
