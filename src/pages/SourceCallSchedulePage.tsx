@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import SourceSyncBanner from "../components/SourceSyncBanner";
 import {
   getSourceCallDays,
   type SourceRecord,
@@ -87,7 +86,7 @@ export default function SourceCallSchedulePage({
               String(role.code || "Call"),
               {
                 code: String(role.code || "Call"),
-                order: Number(role.sort_order || 999),
+                order: Number(role.sort_order ?? 999),
               },
             ] as const;
           }),
@@ -141,7 +140,6 @@ export default function SourceCallSchedulePage({
           </Button>
         </Stack>
       </Stack>
-      <SourceSyncBanner />
       {error && <Alert severity="error">{error}</Alert>}
       {loading ? (
         <Stack alignItems="center" sx={{ py: 8 }}>

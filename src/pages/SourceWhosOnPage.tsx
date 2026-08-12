@@ -17,7 +17,6 @@ import {
 import PhoneIcon from "@mui/icons-material/Phone";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import SourceSyncBanner from "../components/SourceSyncBanner";
 import {
   getSourceAttendingCoverage,
   getSourceCallDay,
@@ -215,7 +214,6 @@ export default function SourceWhosOnPage({
           </Button>
         </Stack>
       </Stack>
-      <SourceSyncBanner />
       {error && <Alert severity="error">{error}</Alert>}
       {loading ? (
         <Stack alignItems="center" sx={{ py: 8 }}>
@@ -258,7 +256,7 @@ export default function SourceWhosOnPage({
                       key={index}
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(150px,42%) minmax(0,1fr)",
+                        gridTemplateColumns: "minmax(150px,35%) minmax(0,1fr)",
                         alignItems: "center",
                         px: 0.65,
                         py: 0.28,
@@ -312,12 +310,12 @@ export default function SourceWhosOnPage({
             {tab === 1 && (
               <Stack spacing={0}>
                 {attending.map((item, index) => (
-                  <Stack
+                  <Box
                     key={String(item.id || index)}
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
                     sx={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(180px,35%) minmax(0,1fr)",
+                      alignItems: "center",
                       py: 0.4,
                       borderBottom:
                         index < attending.length - 1 ? "1px solid" : "none",
@@ -332,8 +330,13 @@ export default function SourceWhosOnPage({
                           item.coverage_type,
                       )}
                     </Typography>
-                    {personLink(String(item.attending_name || ""), "attending")}
-                  </Stack>
+                    <Box sx={{ pl: 1.5 }}>
+                      {personLink(
+                        String(item.attending_name || ""),
+                        "attending",
+                      )}
+                    </Box>
+                  </Box>
                 ))}
               </Stack>
             )}
@@ -365,9 +368,6 @@ export default function SourceWhosOnPage({
                         )}
                       </Typography>
                       <Stack direction="row" spacing={0.5} alignItems="center">
-                        <Typography fontSize={10} color="text.secondary">
-                          Attending
-                        </Typography>
                         {serviceAttending ? (
                           personLink(String(serviceAttending.name), "attending")
                         ) : (
@@ -380,9 +380,6 @@ export default function SourceWhosOnPage({
                         alignItems="center"
                         flexWrap="wrap"
                       >
-                        <Typography fontSize={10} color="text.secondary">
-                          Residents
-                        </Typography>
                         {serviceResidents.length ? (
                           serviceResidents.map((person, i) => (
                             <Box key={i}>

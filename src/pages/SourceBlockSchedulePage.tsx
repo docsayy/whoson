@@ -9,7 +9,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import SourceSyncBanner from "../components/SourceSyncBanner";
 import {
   getSourceBlockSchedule,
   type SourceRecord,
@@ -17,7 +16,10 @@ import {
 import { getResidents } from "../services/residentService";
 import type { Resident } from "../types/resident";
 import { findLinkedProfile } from "../utils/sourceProfileMatching";
-import { getSourceProfileLinks, type SourceProfileLink } from "../services/sourceProfileLinkService";
+import {
+  getSourceProfileLinks,
+  type SourceProfileLink,
+} from "../services/sourceProfileLinkService";
 
 const academicYear = (date: string) => {
   const year = Number(date.slice(0, 4));
@@ -37,7 +39,11 @@ export default function SourceBlockSchedulePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
-    void Promise.all([getSourceBlockSchedule(), getResidents(), getSourceProfileLinks()])
+    void Promise.all([
+      getSourceBlockSchedule(),
+      getResidents(),
+      getSourceProfileLinks(),
+    ])
       .then(([schedule, people, savedLinks]) => {
         setData(schedule);
         setProfiles(people);
@@ -105,7 +111,6 @@ export default function SourceBlockSchedulePage({
           ))}
         </TextField>
       </Stack>
-      <SourceSyncBanner />
       {error && <Alert severity="error">{error}</Alert>}
       {loading ? (
         <Stack alignItems="center" sx={{ py: 8 }}>
@@ -172,7 +177,12 @@ export default function SourceBlockSchedulePage({
                 .filter((resident) => resident.is_active !== false)
                 .map((resident) => {
                   const name = `${resident.first_name} ${resident.last_name}`;
-                  const profile = findLinkedProfile(name, "resident", profiles, links);
+                  const profile = findLinkedProfile(
+                    name,
+                    "resident",
+                    profiles,
+                    links,
+                  );
                   return (
                     <tr key={String(resident.id)}>
                       <td>
