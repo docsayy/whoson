@@ -32,7 +32,7 @@ const AttendingsPage = lazy(() => import("./pages/AttendingsPage"));
 const AttendingCallSchedulePage = lazy(
   () => import("./pages/SourceAttendingSchedulePage")
 );
-const AttendingProfilePage = lazy(() => import("./pages/AttendingProfilePage"));
+const AttendingProfilePage = lazy(() => import("./pages/SourceAttendingProfilePage"));
 const ConsultServiceProfilePage = lazy(
   () => import("./pages/ConsultServiceProfilePage")
 );
@@ -41,7 +41,7 @@ const MonthlyScheduleMatrixPage = lazy(
 );
 const BlockSchedulePage = lazy(() => import("./pages/SourceBlockSchedulePage"));
 const ResidentScheduleProfilePage = lazy(
-  () => import("./pages/ResidentScheduleProfilePage")
+  () => import("./pages/SourceResidentProfilePage")
 );
 const LectureSchedulePage = lazy(() => import("./pages/SourceLectureSchedulePage"));
 const CoverageRulesPage = lazy(() => import("./pages/CoverageRulesPage"));
