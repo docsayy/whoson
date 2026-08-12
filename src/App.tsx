@@ -24,26 +24,26 @@ import type { ConsultServiceProfileId } from "./utils/consultServiceProfiles";
 import PwaManager from "./components/PwaManager";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const WhosOnPage = lazy(() => import("./pages/WhosOnPage"));
+const WhosOnPage = lazy(() => import("./pages/SourceWhosOnPage"));
 const PublicWhosOnPage = lazy(() => import("./pages/PublicWhosOnPage"));
 const PhoneDirectoryPage = lazy(() => import("./pages/PhoneDirectoryPage"));
 const ResidentsPage = lazy(() => import("./pages/ResidentsPage"));
 const AttendingsPage = lazy(() => import("./pages/AttendingsPage"));
 const AttendingCallSchedulePage = lazy(
-  () => import("./pages/AttendingCallSchedulePage")
+  () => import("./pages/SourceAttendingSchedulePage")
 );
 const AttendingProfilePage = lazy(() => import("./pages/AttendingProfilePage"));
 const ConsultServiceProfilePage = lazy(
   () => import("./pages/ConsultServiceProfilePage")
 );
 const MonthlyScheduleMatrixPage = lazy(
-  () => import("./pages/MonthlyScheduleMatrixPage")
+  () => import("./pages/SourceCallSchedulePage")
 );
-const BlockSchedulePage = lazy(() => import("./pages/BlockSchedulePage"));
+const BlockSchedulePage = lazy(() => import("./pages/SourceBlockSchedulePage"));
 const ResidentScheduleProfilePage = lazy(
   () => import("./pages/ResidentScheduleProfilePage")
 );
-const LectureSchedulePage = lazy(() => import("./pages/LectureSchedulePage"));
+const LectureSchedulePage = lazy(() => import("./pages/SourceLectureSchedulePage"));
 const CoverageRulesPage = lazy(() => import("./pages/CoverageRulesPage"));
 const CalendarSubscriptionPage = lazy(
   () => import("./pages/CalendarSubscriptionPage")

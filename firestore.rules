@@ -219,6 +219,43 @@ service cloud.firestore {
       allow write: if isManager();
     }
 
+    // Read-only cache populated by the scheduled Cloudflare Worker using
+    // Firebase IAM. Browser clients can never create or alter source data.
+    match /sourceScheduleCache/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceCallDays/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceServiceDays/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceAttendingDays/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceAbsenceDays/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceLectureDays/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sourceSyncStatus/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     match /hospitalHolidays/{id} {
       allow read: if signedIn();
       allow write: if isManager();

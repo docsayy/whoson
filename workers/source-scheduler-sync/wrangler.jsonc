@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "whoson-source-scheduler-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "triggers": {
+    "crons": ["0 10 * * *"]
+  },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "whosonfhmc"
+  }
+}

@@ -45,7 +45,7 @@ function downloadDataset(name: string, value: unknown, start: string, end: strin
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `rsb-${name}-${start}-to-${end}.json`;
+  link.download = `source-scheduler-${name}-${start}-to-${end}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -89,12 +89,12 @@ export default function ExternalScheduleSyncPage() {
       </Typography>
 
       <Typography color="text.secondary" sx={{ mb: 2 }}>
-        WhosOn connects through Cloudflare to the RSB scheduling API while your
+        WhosOn connects through Cloudflare to the Source Scheduler API while your
         existing Firebase login and Firestore database remain unchanged.
       </Typography>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        The RSB email and password are Cloudflare secrets. They are never sent
+        The Source Scheduler email and password are Cloudflare secrets. They are never sent
         to the browser or stored in the WhosOn source code.
       </Alert>
 
@@ -154,7 +154,7 @@ export default function ExternalScheduleSyncPage() {
               spacing={1}
               sx={{ mb: 1.5 }}
             >
-              <Typography fontWeight={800}>RSB datasets</Typography>
+              <Typography fontWeight={800}>Source Scheduler datasets</Typography>
               {result?.fetchedAt && (
                 <Typography color="text.secondary" fontSize={13}>
                   Fetched {new Date(result.fetchedAt).toLocaleString()}
@@ -195,7 +195,7 @@ export default function ExternalScheduleSyncPage() {
               Schedule data preview
             </Typography>
             <Typography color="text.secondary" fontSize={13} sx={{ mb: 1.5 }}>
-              Expand a dataset to inspect the records returned by RSB. This is
+              Expand a dataset to inspect the records returned by the Source Scheduler. This is
               read-only and does not overwrite your Firestore schedules.
             </Typography>
 
@@ -213,7 +213,7 @@ export default function ExternalScheduleSyncPage() {
                     sx={{ mb: 1 }}
                   >
                     <Typography color="text.secondary" fontSize={13}>
-                      Raw read-only response from RSB
+                      Raw read-only response from the Source Scheduler
                     </Typography>
                     <Button
                       size="small"
