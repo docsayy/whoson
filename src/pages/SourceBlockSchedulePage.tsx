@@ -88,7 +88,7 @@ export default function SourceBlockSchedulePage({
       {
         key: string;
         name: string;
-        pgy?: string;
+        pgys: Set<string>;
         profile?: Resident;
         sources: SourceRecord[];
       }
@@ -105,21 +105,26 @@ export default function SourceBlockSchedulePage({
         );
         const key = profile ? `profile:${profile.id}` : `source:${resident.id}`;
         const existing = grouped.get(key);
-        if (existing) existing.sources.push(resident);
+        const sourcePgy = resident.cohort_id
+          ? `PGY-${resident.cohort_id}`
+          : undefined;
+        if (existing) {
+          existing.sources.push(resident);
+          if (sourcePgy) existing.pgys.add(sourcePgy);
+          if (profile?.pgy) existing.pgys.add(profile.pgy);
+        }
         else
           grouped.set(key, {
             key,
             name:
               profile?.displayName || sourceName.replace(/\s*\(\d+\)\s*$/, ""),
-            pgy:
-              profile?.pgy ||
-              (resident.cohort_id ? `PGY-${resident.cohort_id}` : undefined),
+            pgys: new Set([profile?.pgy, sourcePgy].filter(Boolean) as string[]),
             profile,
             sources: [resident],
           });
       });
     return [...grouped.values()].filter(
-      (row) => selectedPgy === "all" || row.pgy === selectedPgy,
+      (row) => selectedPgy === "all" || row.pgys.has(selectedPgy),
     );
   }, [links, model.residents, profiles, selectedPgy]);
   return (

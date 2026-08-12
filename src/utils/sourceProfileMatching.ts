@@ -25,6 +25,12 @@ function tokens(value: string) {
 
 function sourceParts(value: string) {
   const withoutTitle = value.replace(/\b(dr\.?|md|do)\b/gi, "").trim();
+  const compactAlias = withoutTitle.match(/^([A-Z][a-z]+)([A-Z])$/);
+  if (compactAlias)
+    return {
+      first: compactAlias[2].toLowerCase(),
+      last: compactAlias[1].toLowerCase(),
+    };
   if (withoutTitle.includes(",")) {
     const [last, first = ""] = withoutTitle.split(",");
     return { first: clean(first), last: clean(last) };
@@ -71,9 +77,14 @@ export function findLinkedProfile<T extends PersonProfile>(
   const aliasProfileIds = new Set(
     links
       .filter(
-        (link) =>
-          link.personType === personType &&
-          tokens(link.sourceName).some((part) => incoming.includes(part)),
+        (link) => {
+          if (link.personType !== personType) return false;
+          const alias = tokens(link.sourceName);
+          const shared = incoming.filter((part) => alias.includes(part));
+          return incoming.length === 1
+            ? shared.length === 1
+            : shared.length >= 2;
+        },
       )
       .map((link) => link.profileId),
   );

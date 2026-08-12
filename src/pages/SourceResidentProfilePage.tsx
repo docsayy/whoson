@@ -71,7 +71,7 @@ export default function SourceResidentProfilePage({
   const model = useMemo(() => {
     if (!resident || !data) return null;
     const sourceResidents = (data.residents as SourceRecord[]) || [];
-    const source = sourceResidents.find((item) =>
+    const sources = sourceResidents.filter((item) =>
       findLinkedProfile(
         `${item.first_name} ${item.last_name}`,
         "resident",
@@ -79,7 +79,7 @@ export default function SourceResidentProfilePage({
         links,
       ),
     );
-    if (!source) return null;
+    if (!sources.length) return null;
     const blocks = (data.blocks as SourceRecord[]) || [];
     const rotations = (data.rotations as SourceRecord[]) || [];
     const assignments = (data.assignments as Record<string, unknown>) || {};
@@ -87,9 +87,10 @@ export default function SourceResidentProfilePage({
       rotations.map((item) => [String(item.id), item]),
     );
     const rows = blocks.map((block) => {
-      const rotation = rotationMap.get(
-        String(assignments[`${source.id}:${block.id}`]),
-      );
+      const rotationId = sources
+        .map((source) => assignments[`${source.id}:${block.id}`])
+        .find(Boolean);
+      const rotation = rotationMap.get(String(rotationId));
       return { block, rotation };
     });
     const counts = new Map<string, number>();
@@ -102,7 +103,9 @@ export default function SourceResidentProfilePage({
     const personalCalls = calls.flatMap((day) =>
       ((day.entries as SourceRecord[]) || []).flatMap((entry) =>
         ((entry.residents as SourceRecord[]) || [])
-          .filter((person) => String(person.id) === String(source.id))
+          .filter((person) =>
+            sources.some((source) => String(person.id) === String(source.id)),
+          )
           .map(() => ({
             date: String(day.date),
             role: String((entry.role as SourceRecord)?.code || "Call"),
@@ -110,7 +113,7 @@ export default function SourceResidentProfilePage({
       ),
     );
     return {
-      source,
+      source: sources[0],
       rows,
       counts: [...counts.entries()].sort(),
       personalCalls,
@@ -151,9 +154,7 @@ export default function SourceResidentProfilePage({
         <Typography variant="h4" fontWeight={900}>
           {resident.displayName}
         </Typography>
-        <Typography color="text.secondary">
-          {resident.pgy} · Firestore profile linked to Source Scheduler
-        </Typography>
+        <Typography color="text.secondary">{resident.pgy}</Typography>
       </Card>
       {error && <Alert severity="error">{error}</Alert>}
       {!model ? (
@@ -187,9 +188,6 @@ export default function SourceResidentProfilePage({
                 </IconButton>
               </Stack>
             </Stack>
-            <Typography color="text.secondary" fontSize={11}>
-              Each row is one schedule week: Thursday through Wednesday.
-            </Typography>
             <Box
               sx={{
                 display: "grid",

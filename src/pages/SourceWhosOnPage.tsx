@@ -65,7 +65,10 @@ export default function SourceWhosOnPage({
   const { profile: userProfile } = useAuth();
   const canLink = canManageResidents(userProfile?.role);
   const [date, setDate] = useState(today());
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(() => {
+    const saved = Number(sessionStorage.getItem("sourceWhosOnTab"));
+    return saved >= 0 && saved <= 2 ? saved : 0;
+  });
   const [call, setCall] = useState<SourceRecord | null>(null);
   const [inpatient, setInpatient] = useState<SourceRecord | null>(null);
   const [clinic, setClinic] = useState<SourceRecord | null>(null);
@@ -162,8 +165,14 @@ export default function SourceWhosOnPage({
       <Typography fontSize={12}>{name || "Unassigned"}</Typography>
     );
   };
+  const isWeekend = [0, 6].includes(new Date(`${date}T12:00:00`).getDay());
   const callEntries = ((call?.entries as SourceRecord[]) || [])
     .filter((item) => ((item.residents as SourceRecord[]) || []).length)
+    .filter(
+      (item) =>
+        isWeekend ||
+        !/\bhelper\b/i.test(String((item.role as SourceRecord)?.code || "")),
+    )
     .sort((a, b) =>
       compareSourceRoles(
         (a.role as SourceRecord) || {},
@@ -189,14 +198,9 @@ export default function SourceWhosOnPage({
         alignItems={{ sm: "center" }}
         sx={{ mb: 1 }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={900}>
-            Who&apos;s On
-          </Typography>
-          <Typography color="text.secondary">
-            Compact daily coverage from Source Scheduler.
-          </Typography>
-        </Box>
+        <Typography variant="h4" fontWeight={900}>
+          Who&apos;s On
+        </Typography>
         <Stack direction="row" spacing={0.5} alignItems="center">
           <IconButton
             size="small"
@@ -232,7 +236,10 @@ export default function SourceWhosOnPage({
         <Card>
           <Tabs
             value={tab}
-            onChange={(_, value) => setTab(value)}
+            onChange={(_, value) => {
+              setTab(value);
+              sessionStorage.setItem("sourceWhosOnTab", String(value));
+            }}
             variant="scrollable"
             sx={{
               borderBottom: "1px solid",

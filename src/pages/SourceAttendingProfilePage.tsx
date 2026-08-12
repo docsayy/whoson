@@ -7,6 +7,7 @@ import {
   Chip,
   CircularProgress,
   IconButton,
+  Link,
   Stack,
   Typography,
 } from "@mui/material";
@@ -101,10 +102,18 @@ export default function SourceAttendingProfilePage({
   );
   const days = useMemo(() => {
     const [y, m] = month.split("-").map(Number);
-    return Array.from(
-      { length: new Date(y, m, 0).getDate() },
-      (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`,
-    );
+    const first = new Date(y, m - 1, 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - first.getDay());
+    return Array.from({ length: 42 }, (_, i) => {
+      const day = new Date(start);
+      day.setDate(start.getDate() + i);
+      return {
+        date: value(day),
+        inMonth: day.getMonth() === m - 1,
+        weekend: [0, 6].includes(day.getDay()),
+      };
+    });
   }, [month]);
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -140,10 +149,19 @@ export default function SourceAttendingProfilePage({
         Back
       </Button>
       <Card sx={{ p: 1.5, mb: 1 }}>
-        <Typography variant="h4" fontWeight={900}>
-          {person.displayName}
-        </Typography>
-        <Typography color="text.secondary">{person.specialty}</Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography variant="h4" fontWeight={900}>
+              {person.displayName}
+            </Typography>
+            <Typography color="text.secondary">{person.specialty}</Typography>
+          </Box>
+          {person.phone && (
+            <Link href={`tel:${person.phone}`} fontWeight={800}>
+              {person.phone}
+            </Link>
+          )}
+        </Stack>
       </Card>
       {error && <Alert severity="error">{error}</Alert>}
       <Card sx={{ p: 1.2 }}>
@@ -152,7 +170,7 @@ export default function SourceAttendingProfilePage({
           justifyContent="space-between"
           alignItems="center"
         >
-          <Typography fontWeight={900}>Personal attending coverage</Typography>
+          <Box />
           <Stack direction="row" alignItems="center">
             <IconButton onClick={() => setMonth(shift(month, -1))}>
               <ChevronLeftIcon />
@@ -178,7 +196,25 @@ export default function SourceAttendingProfilePage({
             borderColor: "divider",
           }}
         >
-          {days.map((date) => {
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <Box
+              key={day}
+              sx={{
+                p: 0.45,
+                bgcolor: day === "Sun" || day === "Sat" ? "grey.200" : "grey.100",
+                borderRight: "1px solid",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                textAlign: "center",
+                fontWeight: 900,
+                fontSize: 11,
+              }}
+            >
+              {day}
+            </Box>
+          ))}
+          {days.map((day) => {
+            const date = day.date;
             const coverage = assignments.filter(
               (item) =>
                 String(item.start_date) <= date &&
@@ -194,7 +230,14 @@ export default function SourceAttendingProfilePage({
                   borderRight: "1px solid",
                   borderBottom: "1px solid",
                   borderColor: "divider",
-                  bgcolor: isToday ? "#fff8db" : "white",
+                  bgcolor: isToday
+                    ? "#fff8db"
+                    : !day.inMonth
+                      ? "grey.50"
+                      : day.weekend
+                        ? "#f1f5f9"
+                        : "white",
+                  opacity: day.inMonth ? 1 : 0.45,
                   outline: isToday ? "2px solid #f59e0b" : "none",
                   outlineOffset: -2,
                 }}
