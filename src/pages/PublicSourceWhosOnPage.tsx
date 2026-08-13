@@ -23,7 +23,7 @@ export default function PublicSourceWhosOnPage() {
             alignItems="center"
             sx={{ width: "100%" }}
           >
-            <Typography fontWeight={900} fontSize={22}>
+            <Typography fontWeight={900} fontSize={16}>
               WhosOn
             </Typography>
             <Button
@@ -42,7 +42,7 @@ export default function PublicSourceWhosOnPage() {
           width: "100%",
           maxWidth: 1180,
           mx: "auto",
-          p: { xs: 1, sm: 1.5, md: 2 },
+          p: { xs: 0.6, sm: 0.8, md: 1 },
         }}
       >
         <SourceWhosOnPage />

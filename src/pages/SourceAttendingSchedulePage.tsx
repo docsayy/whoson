@@ -25,6 +25,7 @@ import {
   getSourceProfileLinks,
   type SourceProfileLink,
 } from "../services/sourceProfileLinkService";
+import { currentScheduleDate } from "../utils/scheduleDay";
 
 const value = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -38,7 +39,7 @@ export default function SourceAttendingSchedulePage({
 }: {
   onOpenAttendingProfile?: (id: string) => void;
 }) {
-  const [date, setDate] = useState(value(new Date()));
+  const [date, setDate] = useState(currentScheduleDate());
   const [items, setItems] = useState<SourceRecord[]>([]);
   const [profiles, setProfiles] = useState<Attending[]>([]);
   const [links, setLinks] = useState<SourceProfileLink[]>([]);
@@ -86,7 +87,10 @@ export default function SourceAttendingSchedulePage({
           <IconButton onClick={() => setDate(move(date, 1))}>
             <ChevronRightIcon />
           </IconButton>
-          <Button variant="outlined" onClick={() => setDate(value(new Date()))}>
+          <Button
+            variant="outlined"
+            onClick={() => setDate(currentScheduleDate())}
+          >
             Today
           </Button>
         </Stack>

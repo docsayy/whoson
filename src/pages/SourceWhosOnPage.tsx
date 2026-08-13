@@ -44,11 +44,8 @@ import {
   sourceRoleLabel,
   sourceRoleShiftLabel,
 } from "../utils/sourceCallRole";
+import { currentScheduleDate } from "../utils/scheduleDay";
 
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
 const moveDate = (date: string, days: number) => {
   const next = new Date(`${date}T12:00:00`);
   next.setDate(next.getDate() + days);
@@ -64,7 +61,7 @@ export default function SourceWhosOnPage({
 }) {
   const { profile: userProfile } = useAuth();
   const canLink = canManageResidents(userProfile?.role);
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(currentScheduleDate());
   const [tab, setTab] = useState(() => {
     const saved = Number(sessionStorage.getItem("sourceWhosOnTab"));
     return saved >= 0 && saved <= 2 ? saved : 0;
@@ -88,8 +85,8 @@ export default function SourceWhosOnPage({
       getSourceServiceDay(date, "inpatient"),
       getSourceServiceDay(date, "clinic"),
       getSourceAttendingCoverage(date, date),
-      userProfile ? getResidents(true) : Promise.resolve([]),
-      userProfile ? getAttendings(true) : Promise.resolve([]),
+      userProfile ? getResidents() : Promise.resolve([]),
+      userProfile ? getAttendings() : Promise.resolve([]),
       userProfile ? getSourceProfileLinks() : Promise.resolve([]),
     ]).then(
       ([
@@ -222,7 +219,10 @@ export default function SourceWhosOnPage({
           >
             <ChevronRightIcon />
           </IconButton>
-          <Button variant="outlined" onClick={() => setDate(today())}>
+          <Button
+            variant="outlined"
+            onClick={() => setDate(currentScheduleDate())}
+          >
             Today
           </Button>
         </Stack>

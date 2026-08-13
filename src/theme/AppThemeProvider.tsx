@@ -39,35 +39,38 @@ export default function AppThemeProvider({
               },
       },
       shape: {
-        borderRadius: 9,
+        borderRadius: 7,
       },
       typography: {
         fontFamily: APP_FONT,
-        fontSize: 12.5,
+        fontSize: 11.5,
         h4: {
           fontFamily: APP_FONT,
-          fontSize: "1.45rem",
+          fontSize: "1.18rem",
           lineHeight: 1.12,
           fontWeight: 800,
           letterSpacing: "-0.025em",
         },
         h5: {
           fontFamily: APP_FONT,
-          fontSize: "1.12rem",
+          fontSize: "0.98rem",
           lineHeight: 1.2,
           fontWeight: 800,
         },
         h6: {
           fontFamily: APP_FONT,
-          fontSize: "0.95rem",
+          fontSize: "0.84rem",
           lineHeight: 1.25,
           fontWeight: 800,
         },
-        body1: { fontSize: "0.79rem" },
-        body2: { fontSize: "0.74rem" },
+        subtitle1: { fontSize: "0.78rem" },
+        subtitle2: { fontSize: "0.72rem" },
+        body1: { fontSize: "0.72rem" },
+        body2: { fontSize: "0.68rem" },
+        caption: { fontSize: "0.62rem" },
         button: {
           fontFamily: APP_FONT,
-          fontSize: "0.72rem",
+          fontSize: "0.66rem",
           fontWeight: 700,
           textTransform: "none",
         },
@@ -80,27 +83,27 @@ export default function AppThemeProvider({
           },
           styleOverrides: {
             root: {
-              minHeight: 30,
-              borderRadius: 8,
-              paddingLeft: 10,
-              paddingRight: 10,
+              minHeight: 26,
+              borderRadius: 6,
+              paddingLeft: 8,
+              paddingRight: 8,
             },
           },
         },
         MuiChip: {
           defaultProps: { size: "small" },
           styleOverrides: {
-            root: { minHeight: 20 },
-            label: { fontSize: "0.64rem", fontWeight: 700 },
+            root: { minHeight: 18, height: 18 },
+            label: { paddingLeft: 6, paddingRight: 6, fontSize: "0.59rem", fontWeight: 700 },
           },
         },
         MuiTab: {
           styleOverrides: {
             root: {
-              minHeight: 34,
-              paddingTop: 5,
-              paddingBottom: 5,
-              fontSize: "0.69rem",
+              minHeight: 30,
+              paddingTop: 4,
+              paddingBottom: 4,
+              fontSize: "0.64rem",
               fontWeight: 800,
             },
           },
@@ -108,20 +111,42 @@ export default function AppThemeProvider({
         MuiCardContent: {
           styleOverrides: {
             root: {
-              paddingTop: 12,
-              paddingBottom: 12,
+              padding: 9,
+              "&:last-child": { paddingBottom: 9 },
             },
           },
         },
         MuiInputBase: {
           styleOverrides: {
-            root: { fontFamily: APP_FONT, fontSize: "0.75rem" },
+            root: { fontFamily: APP_FONT, fontSize: "0.69rem" },
           },
         },
         MuiInputLabel: {
           styleOverrides: {
-            root: { fontFamily: APP_FONT, fontSize: "0.72rem" },
+            root: { fontFamily: APP_FONT, fontSize: "0.66rem" },
           },
+        },
+        MuiIconButton: {
+          defaultProps: { size: "small" },
+          styleOverrides: { root: { padding: 5 }, sizeSmall: { padding: 4 } },
+        },
+        MuiToolbar: {
+          styleOverrides: { root: { minHeight: "46px !important" } },
+        },
+        MuiTableCell: {
+          styleOverrides: {
+            root: { padding: "5px 7px", fontSize: "0.68rem" },
+            head: { fontWeight: 800 },
+          },
+        },
+        MuiAlert: {
+          styleOverrides: { root: { padding: "3px 8px", fontSize: "0.68rem" } },
+        },
+        MuiDialogTitle: {
+          styleOverrides: { root: { padding: "10px 12px", fontSize: "0.95rem" } },
+        },
+        MuiDialogContent: {
+          styleOverrides: { root: { padding: "8px 12px" } },
         },
       },
     });

@@ -28,6 +28,7 @@ import {
   sourceRoleKey,
   sourceRoleLabel,
 } from "../utils/sourceCallRole";
+import { currentScheduleDate } from "../utils/scheduleDay";
 
 const value = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -172,7 +173,7 @@ export default function SourceCallSchedulePage({
               <tr>
                 <th>Assignment</th>
                 {weekDays.map((day) => {
-                  const isToday = String(day.date) === value(new Date());
+                  const isToday = String(day.date) === currentScheduleDate();
                   return (
                     <th
                       key={String(day.date)}
@@ -207,7 +208,7 @@ export default function SourceCallSchedulePage({
                     );
                     const people =
                       (entry?.residents as SourceRecord[] | undefined) || [];
-                    const isToday = String(day.date) === value(new Date());
+                    const isToday = String(day.date) === currentScheduleDate();
                     return (
                       <td
                         key={String(day.date)}

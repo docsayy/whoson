@@ -25,7 +25,7 @@ import { useSidebarSettings } from "../hooks/useSidebarSettings";
 import type { AppPage } from "../types/page";
 import { canManageResidents } from "../utils/permissions";
 
-const drawerWidth = 250;
+const drawerWidth = 224;
 
 export default function DashboardLayout({
   children,
@@ -141,7 +141,7 @@ export default function DashboardLayout({
           sx={{
             justifyContent: "space-between",
             gap: 1,
-            minHeight: { xs: 52, sm: 56 },
+            minHeight: { xs: 46, sm: 48 },
             px: { xs: 1, sm: 1.5 },
           }}
         >
@@ -152,7 +152,7 @@ export default function DashboardLayout({
             <Typography
               noWrap
               fontWeight={800}
-              sx={{ fontSize: { xs: 15, sm: 17 }, letterSpacing: "-0.02em" }}
+              sx={{ fontSize: { xs: 13, sm: 14.5 }, letterSpacing: "-0.02em" }}
             >
               WhosOn
             </Typography>
@@ -208,11 +208,11 @@ export default function DashboardLayout({
           maxWidth: "100vw",
           minHeight: "100vh",
           backgroundColor: "#f8fafc",
-          p: { xs: 0.75, sm: 1, md: 1.25 },
+          p: { xs: 0.6, sm: 0.75, md: 0.9 },
           overflowX: "hidden",
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 52, sm: 56 } }} />
+        <Toolbar sx={{ minHeight: { xs: 46, sm: 48 } }} />
         <Box sx={{ width: "100%", minWidth: 0 }}>{children}</Box>
       </Box>
     </Box>

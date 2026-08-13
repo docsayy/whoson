@@ -4,7 +4,7 @@ import "@fontsource/plus-jakarta-sans/600.css";
 import "@fontsource/plus-jakarta-sans/700.css";
 import "@fontsource/plus-jakarta-sans/800.css";
 
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Box, CircularProgress, GlobalStyles, Typography } from "@mui/material";
 import {
   Navigate,
@@ -132,6 +132,25 @@ function AuthenticatedApp() {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPage = pageForPath(location.pathname);
+
+  useEffect(() => {
+    const warmProfiles = () => {
+      void Promise.allSettled([
+        import("./pages/SourceResidentProfilePage"),
+        import("./pages/SourceAttendingProfilePage"),
+      ]);
+    };
+    const browser = window as Window & {
+      requestIdleCallback?: (callback: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (browser.requestIdleCallback) {
+      const id = browser.requestIdleCallback(warmProfiles);
+      return () => browser.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(warmProfiles, 800);
+    return () => window.clearTimeout(id);
+  }, []);
 
   function openPage(page: AppPage) {
     navigate(pathForPage(page));
@@ -270,7 +289,7 @@ export default function App() {
             body: {
               fontFamily:
                 '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-              fontSize: "12.5px",
+              fontSize: "11.5px",
             },
             button: { fontFamily: "inherit" },
             input: { fontFamily: "inherit" },
