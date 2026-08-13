@@ -17,7 +17,6 @@ import { getResidents } from "../services/residentService";
 import {
   getSourceBlockSchedule,
   getSourceCallDays,
-  getSourceSyncStatus,
   type SourceRecord,
 } from "../services/sourceSchedulerService";
 import type { Resident } from "../types/resident";
@@ -34,6 +33,47 @@ const shiftMonth = (month: string, n: number) => {
   const [y, m] = month.split("-").map(Number);
   return monthValue(new Date(y, m - 1 + n, 1));
 };
+
+const promotionIdentity = (item: SourceRecord) =>
+  `${item.first_name} ${item.last_name}`
+    .toLowerCase()
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const compactAliasMatches = (alias: string, item: SourceRecord) => {
+  const compact = alias.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const match = compact.match(/^([a-z]{3,})([a-z])$/);
+  if (!match) return false;
+  const first = String(item.first_name || "").toLowerCase();
+  const last = String(item.last_name || "")
+    .toLowerCase()
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/[^a-z]/g, "");
+  return last === match[1] && first.startsWith(match[2]);
+};
+
+const assignmentForBlock = (
+  sources: SourceRecord[],
+  block: SourceRecord,
+  assignments: Record<string, unknown>,
+  rotationMap: Map<string, SourceRecord>,
+) =>
+  sources
+    .map((source) => {
+      const rotationId = assignments[`${source.id}:${block.id}`];
+      const rotation = rotationMap.get(String(rotationId));
+      return { source, rotation };
+    })
+    .filter(
+      (item): item is { source: SourceRecord; rotation: SourceRecord } =>
+        Boolean(item.rotation) &&
+        !/^off\s+pgy[- ]?\d+$/i.test(String(item.rotation!.code || "")),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.source.cohort_id || 0) - Number(a.source.cohort_id || 0),
+    )[0]?.rotation;
 export default function SourceResidentProfilePage({
   residentId,
   onBack,
@@ -52,32 +92,64 @@ export default function SourceResidentProfilePage({
     void Promise.all([
       getResidents(),
       getSourceBlockSchedule(),
-      getSourceSyncStatus(),
       getSourceProfileLinks(),
     ])
-      .then(async ([people, blocks, status, savedLinks]) => {
+      .then(([people, blocks, savedLinks]) => {
         const person = people.find((item) => item.id === residentId) || null;
         setResident(person);
         setData(blocks);
         setLinks(savedLinks);
-        if (status?.start && status?.end)
-          setCalls(await getSourceCallDays(status.start, status.end));
       })
       .catch(() =>
         setError("Unable to load this resident's synchronized schedule."),
       )
       .finally(() => setLoading(false));
   }, [residentId]);
+
+  const calendarRange = useMemo(() => {
+    const [y, m] = month.split("-").map(Number);
+    const first = new Date(y, m - 1, 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() - 4 + 7) % 7));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 41);
+    return { start: value(start), end: value(end) };
+  }, [month]);
+
+  useEffect(() => {
+    let active = true;
+    setCalls([]);
+    void getSourceCallDays(calendarRange.start, calendarRange.end)
+      .then((items) => {
+        if (active) setCalls(items);
+      })
+      .catch(() => {
+        // Rotation data can still render if call data is temporarily unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, [calendarRange.end, calendarRange.start]);
   const model = useMemo(() => {
     if (!resident || !data) return null;
     const sourceResidents = (data.residents as SourceRecord[]) || [];
-    const sources = sourceResidents.filter((item) =>
+    const linkedAliases = links.filter(
+      (link) =>
+        link.personType === "resident" && link.profileId === resident.id,
+    );
+    const directlyMatched = sourceResidents.filter((item) =>
       findLinkedProfile(
         `${item.first_name} ${item.last_name}`,
         "resident",
         [resident],
         links,
       ),
+    );
+    const matchedIdentities = new Set(directlyMatched.map(promotionIdentity));
+    const sources = sourceResidents.filter(
+      (item) =>
+        matchedIdentities.has(promotionIdentity(item)) ||
+        linkedAliases.some((link) => compactAliasMatches(link.sourceName, item)),
     );
     if (!sources.length) return null;
     const blocks = (data.blocks as SourceRecord[]) || [];
@@ -87,10 +159,12 @@ export default function SourceResidentProfilePage({
       rotations.map((item) => [String(item.id), item]),
     );
     const rows = blocks.map((block) => {
-      const rotationId = sources
-        .map((source) => assignments[`${source.id}:${block.id}`])
-        .find(Boolean);
-      const rotation = rotationMap.get(String(rotationId));
+      const rotation = assignmentForBlock(
+        sources,
+        block,
+        assignments,
+        rotationMap,
+      );
       return { block, rotation };
     });
     const counts = new Map<string, number>();
@@ -120,16 +194,14 @@ export default function SourceResidentProfilePage({
     };
   }, [calls, data, links, resident]);
   const monthDays = useMemo(() => {
-    const [y, m] = month.split("-").map(Number);
-    const first = new Date(y, m - 1, 1);
-    const start = new Date(first);
-    start.setDate(first.getDate() - ((first.getDay() - 4 + 7) % 7));
+    const [, m] = month.split("-").map(Number);
+    const start = new Date(`${calendarRange.start}T12:00:00`);
     return Array.from({ length: 42 }, (_, i) => {
       const day = new Date(start);
       day.setDate(start.getDate() + i);
       return { date: value(day), inMonth: day.getMonth() === m - 1 };
     });
-  }, [month]);
+  }, [calendarRange.start, month]);
   if (loading)
     return (
       <Stack alignItems="center" sx={{ py: 8 }}>
@@ -170,9 +242,7 @@ export default function SourceResidentProfilePage({
               justifyContent="space-between"
               alignItems="center"
             >
-              <Typography fontWeight={900}>
-                Personal monthly call schedule
-              </Typography>
+              <Typography fontWeight={900}>Calendar</Typography>
               <Stack direction="row" alignItems="center">
                 <IconButton onClick={() => setMonth(shiftMonth(month, -1))}>
                   <ChevronLeftIcon />
@@ -249,7 +319,7 @@ export default function SourceResidentProfilePage({
                     </Typography>
                     {blockRotation && (
                       <Chip
-                        label={`Rotation: ${String(blockRotation.code)}`}
+                        label={String(blockRotation.code)}
                         size="small"
                         sx={{
                           mt: 0.3,

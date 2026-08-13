@@ -85,15 +85,9 @@ export default function SourceLectureSchedulePage() {
         alignItems={{ sm: "center" }}
         sx={{ mb: 1 }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={900}>
-            Lecture Schedule
-          </Typography>
-          <Typography color="text.secondary">
-            Monthly Source Scheduler conference calendar. Click a date for
-            details.
-          </Typography>
-        </Box>
+        <Typography variant="h4" fontWeight={900}>
+          Lecture Schedule
+        </Typography>
         <Stack direction="row" alignItems="center">
           <IconButton onClick={() => setMonth(shift(month, -1))}>
             <ChevronLeftIcon />
