@@ -104,9 +104,6 @@ export default function SourceCallSchedulePage({
           <Typography variant="h4" fontWeight={900}>
             Daily Call Schedule
           </Typography>
-          <Typography color="text.secondary">
-            Weekly view runs Thursday through Wednesday.
-          </Typography>
         </Box>
         <Stack direction="row" alignItems="center">
           <IconButton onClick={() => shift(-7)}>

@@ -17,12 +17,14 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SyncIcon from "@mui/icons-material/Sync";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 import {
   getExternalScheduleBundle,
   type ExternalScheduleResponse,
   type ExternalSyncSummary,
 } from "../services/externalScheduleService";
+import { runSourceSyncNow } from "../services/sourceSchedulerService";
 
 function currentMonthBounds() {
   const now = new Date();
@@ -65,6 +67,22 @@ export default function ExternalScheduleSyncPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ExternalScheduleResponse | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+
+  async function updateNow() {
+    try {
+      setSyncing(true);
+      setError("");
+      setSyncMessage("");
+      await runSourceSyncNow();
+      setSyncMessage("Schedule updated successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Schedule update failed.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function testConnection() {
     try {
@@ -103,6 +121,37 @@ export default function ExternalScheduleSyncPage() {
           {error}
         </Alert>
       )}
+      {syncMessage && (
+        <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 2 }}>
+          {syncMessage}
+        </Alert>
+      )}
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems={{ sm: "center" }}
+            spacing={1}
+          >
+            <Box>
+              <Typography fontWeight={850}>Schedule synchronization</Typography>
+              <Typography color="text.secondary" fontSize={13}>
+                The schedule updates daily automatically. Managers can also refresh it anytime.
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={syncing ? <CircularProgress size={18} color="inherit" /> : <SyncIcon />}
+              disabled={syncing}
+              onClick={updateNow}
+            >
+              {syncing ? "Updating…" : "Update now"}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card sx={{ mb: 2 }}>
         <CardContent>

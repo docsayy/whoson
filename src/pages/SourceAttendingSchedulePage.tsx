@@ -72,10 +72,6 @@ export default function SourceAttendingSchedulePage({
           <Typography variant="h4" fontWeight={900}>
             Attending Call Schedule
           </Typography>
-          <Typography color="text.secondary">
-            Coverage for one selected day. Names open matching Firestore
-            profiles.
-          </Typography>
         </Box>
         <Stack direction="row" alignItems="center" spacing={0.5}>
           <IconButton onClick={() => setDate(move(date, -1))}>

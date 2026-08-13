@@ -8,6 +8,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { auth } from "../config/firebase";
 
 export type SourceRecord = Record<string, unknown>;
 
@@ -21,6 +22,24 @@ export type SourceSyncStatus = {
   error?: string;
   documentCount?: number;
 };
+
+const SOURCE_SYNC_URL =
+  "https://whoson-source-scheduler-sync.msayan92.workers.dev";
+
+export async function runSourceSyncNow() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Sign in again before updating the schedule.");
+  const response = await fetch(SOURCE_SYNC_URL, {
+    method: "POST",
+    headers: { authorization: `Firebase ${await user.getIdToken()}` },
+  });
+  const body = (await response.json().catch(() => null)) as
+    | { ok?: boolean; error?: string }
+    | null;
+  if (!response.ok || !body?.ok)
+    throw new Error(body?.error || "Schedule update failed.");
+  return body;
+}
 
 export async function getSourceSyncStatus() {
   const snapshot = await getDoc(doc(db, "sourceSyncStatus", "current"));

@@ -270,19 +270,76 @@ async function recordFailure(env: Env, error: unknown) {
   }
 }
 
+const allowedManagerRoles = new Set([
+  "admin",
+  "chief resident",
+  "program coordinator",
+]);
+
+function corsHeaders(request: Request) {
+  return {
+    "access-control-allow-origin": request.headers.get("origin") || "*",
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
+    vary: "Origin",
+  };
+}
+
+async function firebaseManagerUid(request: Request, env: Env) {
+  const authorization = request.headers.get("authorization") || "";
+  if (!authorization.startsWith("Firebase ")) return null;
+  const idToken = authorization.slice("Firebase ".length);
+  const parts = idToken.split(".");
+  if (parts.length !== 3) return null;
+  let tokenInfo: { aud?: string; iss?: string; sub?: string; user_id?: string };
+  try {
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    tokenInfo = JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, "=")));
+  } catch {
+    return null;
+  }
+  if (
+    tokenInfo.aud !== env.FIREBASE_PROJECT_ID ||
+    tokenInfo.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`
+  ) return null;
+  const uid = tokenInfo.user_id || tokenInfo.sub;
+  if (!uid) return null;
+  // Firestore validates the Firebase ID-token signature and applies the app's
+  // security rules before returning the signed-in user's own profile.
+  const profileResponse = await fetch(
+    `https://firestore.googleapis.com/v1/${documentName(env, "users", uid)}`,
+    { headers: { authorization: `Bearer ${idToken}` } },
+  );
+  if (!profileResponse.ok) return null;
+  const profile = await profileResponse.json() as {
+    fields?: Record<string, { stringValue?: string; booleanValue?: boolean }>;
+  };
+  const role = (profile.fields?.role?.stringValue || "").trim().toLowerCase();
+  const active = profile.fields?.active?.booleanValue !== false;
+  const approved = profile.fields?.approved?.booleanValue !== false;
+  return active && approved && allowedManagerRoles.has(role) ? uid : null;
+}
+
 export default {
   async scheduled(_controller: ScheduledController, env: Env, context: ExecutionContext) {
     context.waitUntil(runSync(env).catch(async (error) => { await recordFailure(env, error); throw error; }));
   },
   async fetch(request: Request, env: Env) {
-    if (request.method !== "POST" || request.headers.get("authorization") !== `Bearer ${env.MANUAL_SYNC_TOKEN}`) {
-      return new Response("Not found", { status: 404 });
-    }
+    const cors = corsHeaders(request);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (request.method !== "POST") return new Response("Not found", { status: 404, headers: cors });
+    const tokenAuthorized = request.headers.get("authorization") === `Bearer ${env.MANUAL_SYNC_TOKEN}`;
+    const managerAuthorized = tokenAuthorized ? false : Boolean(await firebaseManagerUid(request, env));
+    if (!tokenAuthorized && !managerAuthorized)
+      return Response.json({ ok: false, error: "Not authorized." }, { status: 403, headers: cors });
     try {
-      return Response.json(await runSync(env));
+      return Response.json(await runSync(env), { headers: cors });
     } catch (error) {
       await recordFailure(env, error);
-      return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+      return Response.json(
+        { ok: false, error: error instanceof Error ? error.message : String(error) },
+        { status: 500, headers: cors },
+      );
     }
   },
 };

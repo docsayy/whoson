@@ -33,6 +33,53 @@ const academicYear = (date: string) => {
   const start = month >= 7 ? year : year - 1;
   return `${start}-${start + 1}`;
 };
+
+const promotionIdentity = (resident: SourceRecord) =>
+  `${resident.first_name} ${resident.last_name}`
+    .toLowerCase()
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const assignmentForBlock = (
+  sources: SourceRecord[],
+  block: SourceRecord,
+  assignments: Record<string, unknown>,
+  rotationMap: Map<string, SourceRecord>,
+) =>
+  sources
+    .map((resident) => {
+      const rotationId = assignments[`${resident.id}:${block.id}`];
+      const rotation = rotationMap.get(String(rotationId));
+      return { resident, rotation };
+    })
+    .filter(
+      (item): item is { resident: SourceRecord; rotation: SourceRecord } =>
+        Boolean(item.rotation) &&
+        !/^off\s+pgy[- ]?\d+$/i.test(String(item.rotation!.code || "")),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.resident.cohort_id || 0) -
+        Number(a.resident.cohort_id || 0),
+    )[0]?.rotation;
+
+const rotationStyle = (code: string) => {
+  const normalized = code.toLowerCase();
+  if (normalized.includes("vacation")) return { background: "#fef3c7", accent: "#d97706" };
+  if (normalized === "nf") return { background: "#ede9fe", accent: "#7c3aed" };
+  if (normalized.includes("micu") || normalized.includes("icu")) return { background: "#fee2e2", accent: "#dc2626" };
+  if (normalized === "amb") return { background: "#dcfce7", accent: "#16a34a" };
+  if (normalized === "tele") return { background: "#ffedd5", accent: "#ea580c" };
+  if (normalized === "2n") return { background: "#dbeafe", accent: "#2563eb" };
+  if (normalized === "3w") return { background: "#e0e7ff", accent: "#4f46e5" };
+  if (normalized === "4n") return { background: "#fef9c3", accent: "#ca8a04" };
+  if (normalized === "id") return { background: "#ccfbf1", accent: "#0f766e" };
+  if (normalized === "jeo") return { background: "#fae8ff", accent: "#a21caf" };
+  if (normalized === "adm") return { background: "#ffe4e6", accent: "#e11d48" };
+  return { background: "#f1f5f9", accent: "#64748b" };
+};
+
 export default function SourceBlockSchedulePage({
   onOpenResidentProfile,
 }: {
@@ -110,7 +157,11 @@ export default function SourceBlockSchedulePage({
           profiles,
           links,
         );
-        const key = profile ? `profile:${profile.id}` : `source:${resident.id}`;
+        // Source Scheduler creates a second record when a resident is promoted
+        // mid-year (for example "Ramsha Khan (1)" -> "Ramsha Khan"). Group
+        // those records by the full normalized name, not by current PGY/profile.
+        // Initial-based aliases such as KhanR and KhanS remain distinct.
+        const key = `person:${promotionIdentity(resident)}`;
         const existing = grouped.get(key);
         const sourcePgy = resident.cohort_id
           ? `PGY-${resident.cohort_id}`
@@ -145,10 +196,6 @@ export default function SourceBlockSchedulePage({
         <Box>
           <Typography variant="h4" fontWeight={900}>
             Block Schedule
-          </Typography>
-          <Typography color="text.secondary">
-            Source Scheduler colors are preserved. Select a resident to open
-            their profile.
           </Typography>
         </Box>
         <TextField
@@ -295,22 +342,21 @@ export default function SourceBlockSchedulePage({
                       )}
                     </td>
                     {model.blocks.map((block) => {
-                      const rotationId = row.sources
-                        .map(
-                          (resident) =>
-                            model.assignments[`${resident.id}:${block.id}`],
-                        )
-                        .find(Boolean);
-                      const rotation = model.rotationMap.get(
-                        String(rotationId),
+                      const rotation = assignmentForBlock(
+                        row.sources,
+                        block,
+                        model.assignments,
+                        model.rotationMap,
                       );
+                      const colors = rotationStyle(String(rotation?.code || ""));
                       return (
                         <td
                           key={String(block.id)}
                           style={{
-                            background: String(
-                              rotation?.color || "transparent",
-                            ),
+                            background: rotation ? colors.background : "transparent",
+                            boxShadow: rotation
+                              ? `inset 4px 0 0 ${colors.accent}`
+                              : "none",
                             fontWeight: 700,
                           }}
                         >
